@@ -12,7 +12,7 @@ namespace astra_mail
 
         CmdResetConfig(std::string title, Action action);
 
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
         CommandResult execute() override;
 
     private:

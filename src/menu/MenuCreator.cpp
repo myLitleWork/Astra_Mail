@@ -6,6 +6,8 @@
 #include "src/Utils/FlashDriveScanner.h"
 #include "src/menu/Commands/Mails/CmdViewFlashMails.h"
 #include "src/menu/Commands/Mails/CmdSendMailsFromPath.h"
+#include "src/menu/Commands/Mails/CmdViewOutboxMails.h"
+#include "src/menu/Commands/Mails/CmdSendMailsFromOutbox.h"
 #include "src/menu/Commands/Menu/CmdBack.h"
 #include "src/menu/Commands/Flash+Mount/CmdMountFlash.h"
 #include "src/menu/Commands/Menu/CmdOpenMenu.h"
@@ -215,6 +217,13 @@ namespace astra_mail::menu
                 std::make_unique<CmdOpenMenu>(
                         []() { return createFlashMenu(FlashContext::ViewOnly); },
                         "Просмотр писем на флеш-накопителях"
+                )
+        );
+
+        menu->add(
+                std::make_unique<CmdOpenMenu>(
+                        []() { return createOutboxMenu(); },
+                        "Работа с outbox"
                 )
         );
 
@@ -548,6 +557,19 @@ namespace astra_mail::menu
         }
 
         menu->add(std::make_unique<CmdBack>());
+        return menu;
+    }
+
+// ==================== МЕНЮ «OUTBOX» ====================
+
+    std::unique_ptr<Menu> createOutboxMenu()
+    {
+        auto menu = std::make_unique<Menu>("Outbox");
+
+        menu->add(std::make_unique<CmdViewOutboxMails>());
+        menu->add(std::make_unique<CmdSendMailsFromOutbox>());
+        menu->add(std::make_unique<CmdBack>());
+
         return menu;
     }
 
