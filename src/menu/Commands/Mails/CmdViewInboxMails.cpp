@@ -6,9 +6,17 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace astra_mail
 {
+    struct SubjectEntry
+    {
+        size_t letters = 0;
+        uint64_t totalSizeBytes = 0;
+        std::vector<std::pair<std::string, uint64_t>> files;
+    };
+
     static void printInboxReport(std::ostream& os)
     {
         fs::path inboxRoot = getInboxRoot();
@@ -19,8 +27,7 @@ namespace astra_mail
             return;
         }
 
-        struct SubjectStats { size_t letters = 0; size_t attachments = 0; uint64_t sizeBytes = 0; };
-        std::map<std::string, SubjectStats> bySubject;
+        std::map<std::string, SubjectEntry> bySubject;
         size_t totalLetters = 0;
         size_t totalAttachments = 0;
         uint64_t totalBytes = 0;
@@ -30,7 +37,7 @@ namespace astra_mail
             if (ec || !fs::is_directory(it->path()))
                 continue;
             std::string subject = it->path().filename().string();
-            auto& stats = bySubject[subject];
+            SubjectEntry& entry = bySubject[subject];
 
             for (auto uit = fs::directory_iterator(it->path(), ec); !ec && uit != fs::directory_iterator(); uit.increment(ec))
             {
@@ -40,7 +47,7 @@ namespace astra_mail
                 if (name.size() <= 4 || name.compare(0, 4, "uid_") != 0)
                     continue;
 
-                ++stats.letters;
+                ++entry.letters;
                 ++totalLetters;
 
                 for (auto fit = fs::directory_iterator(uit->path(), ec); !ec && fit != fs::directory_iterator(); fit.increment(ec))
@@ -50,37 +57,48 @@ namespace astra_mail
                     uint64_t sz = 0;
                     auto fsz = fs::file_size(fit->path(), ec);
                     if (!ec) sz = static_cast<uint64_t>(fsz);
-                    ++stats.attachments;
+                    std::string fname = fit->path().filename().string();
+                    entry.files.push_back({fname, sz});
+                    entry.totalSizeBytes += sz;
                     ++totalAttachments;
-                    stats.sizeBytes += sz;
                     totalBytes += sz;
                 }
             }
         }
 
-        os << "=== Входящие: " << inboxRoot.string() << " ===\n\n";
+        os << "=== Анализ входящих: " << inboxRoot.string() << " ===\n\n";
         if (bySubject.empty())
         {
-            os << "Писем не найдено.\n";
+            os << "Писем не найдено (папки без файлов игнорируются).\n";
             return;
         }
 
         size_t idx = 0;
         for (const auto& p : bySubject)
         {
-            const SubjectStats& s = p.second;
-            if (s.letters == 0)
+            const SubjectEntry& e = p.second;
+            if (e.letters == 0)
                 continue;
             ++idx;
             os << "[" << idx << "] Тема: " << p.first << "\n";
-            os << "    Писем: " << s.letters << ", вложений: " << s.attachments
-               << ", объём: " << MailFolderScanner::formatBytes(s.sizeBytes) << "\n\n";
+            os << "    Папка: " << p.first << "\n";
+            os << "    Писем: " << e.letters << ", вложений: " << e.files.size() << "\n";
+            os << "    ---------------------------------\n";
+
+            for (const auto& f : e.files)
+            {
+                os << "      - " << f.first << "    "
+                   << MailFolderScanner::formatBytes(f.second) << "\n";
+            }
+
+            os << "    ---------------------------------\n";
+            os << "    ИТОГО: " << MailFolderScanner::formatBytes(e.totalSizeBytes) << "\n\n";
         }
 
         os << "-------------------------------------\n";
-        os << "Всего писем: " << totalLetters << "\n";
-        os << "Всего вложений: " << totalAttachments << "\n";
-        os << "Общий объём: " << MailFolderScanner::formatBytes(totalBytes) << "\n";
+        os << "Найдено писем: " << totalLetters << "\n";
+        os << "Найдено вложений: " << totalAttachments << "\n";
+        os << "Общий объём вложений: " << MailFolderScanner::formatBytes(totalBytes) << "\n";
     }
 
     CommandResult CmdViewInboxMails::execute()
