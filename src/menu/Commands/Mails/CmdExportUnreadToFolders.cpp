@@ -3,12 +3,19 @@
 #include "Utils/EmlParser.h"
 #include "Utils/Base64.h"
 #include "Resolver/Resolvers/SubjectFolderResolver.h"
+#include "AstraMailPaths.h"
+#include "UtilsFS/FsCompat.h"
 #include <iostream>
 #include <sys/stat.h>
 #include <cerrno>
 #include "UtilsFS/FsUtils.h"
 #include "Utils/Utils.h"
 #include "Configs/Confg/ConfigPaths.h"
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+#include <fstream>
 
 
 
@@ -233,6 +240,59 @@ namespace astra_mail {
         return errno == EEXIST;
     }
 
+    /** Сканирует inbox: uid -> (subject, полный путь к папке uid_xxx). Только BySubject-структура. */
+    static std::map<std::string, std::pair<std::string, fs::path>> buildInboxUidMap()
+    {
+        std::map<std::string, std::pair<std::string, fs::path>> map;
+        fs::path inboxRoot = getInboxRoot();
+        std::error_code ec;
+        if (!fs::exists(inboxRoot, ec))
+            return map;
+        for (const auto& subjEntry : fs::directory_iterator(inboxRoot, ec))
+        {
+            if (ec || ! fs::is_directory(subjEntry))
+                continue;
+            std::string subject = subjEntry.path().filename().string();
+            for (const auto& uidEntry : fs::directory_iterator(subjEntry.path(), ec))
+            {
+                if (ec || !fs::is_directory(uidEntry))
+                    continue;
+                std::string name = uidEntry.path().filename().string();
+                if (name.size() > 4 && name.compare(0, 4, "uid_") == 0)
+                {
+                    std::string uid = name.substr(4);
+                    map[uid] = std::make_pair(subject, uidEntry.path());
+                }
+            }
+        }
+        return map;
+    }
+
+    /** Читает все файлы из папки письма в inbox (subject/uid_xxx) в вектор вложений для экспорта по типам. */
+    static std::vector<ExportedAttachment> readInboxUidFolderAsAttachments(const fs::path& uidFolderPath)
+    {
+        std::vector<ExportedAttachment> out;
+        std::error_code ec;
+        if (!fs::is_directory(uidFolderPath, ec))
+            return out;
+        for (const auto& entry : fs::directory_iterator(uidFolderPath, ec))
+        {
+            if (ec)
+                continue;
+            if (!fs::is_regular_file(entry.path(), ec))
+                continue;
+            fs::path p = entry.path();
+            std::ifstream f(p, std::ios::binary);
+            if (!f)
+                continue;
+            ExportedAttachment a;
+            a.filename = p.filename().string();
+            a.data.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+            out.push_back(std::move(a));
+        }
+        return out;
+    }
+
 // ----- RFC2047 (B only) -----
     static bool decodeRfc2047(const std::string& in, std::string& out)
     {
@@ -302,87 +362,139 @@ namespace astra_mail {
 
 
 
-    CommandResult CmdExportUnreadToFolders::execute()
+    bool CmdExportUnreadToFolders::runExport(const std::string& host, int port,
+                                              const std::string& user, const std::string& pass,
+                                              const std::vector<ImapFolder>& folders,
+                                              const std::string& outDir,
+                                              ExportStrategy strategy,
+                                              std::ostream* log)
     {
-        //ImapClient imap(true);
+        if (log) *log << "[Экспорт] Запуск: " << outDir
+                      << (strategy.mode == ExportMode::BySubject ? " (по темам)" : " (по типам вложений)")
+                      << "\n";
 
-        auto exit = []{my::pause();
-            return CommandResult::ExitMenu;};
-
-        // Экспортер: стратегия приходит из меню (BySubject / ByExtension)
         AttachmentExporter exporter(
-                outDir_,
-                strategy_,
+                outDir,
+                strategy,
                 config::attachmentGroups()
         );
+        if (!exporter.loadGroups())
+        {
+            if (log) *log << "[Экспорт] Ошибка загрузки attachment_groups.conf\n";
+            return false;
+        }
 
-        // Группы нужны только для ByExtension, но вызывать можно всегда.
-        exporter.loadGroups();
-
-        // Subject rules: загружаем один раз
         SubjectFolderResolver subjResolver(config::subjectRules());
         subjResolver.load();
 
         ImapSession ses;
         std::string err;
 
-        if (!imapOpen(ses, host_, port_, err)) return exit();
-        if (!imapLogin(ses, user_, pass_, err)) {
+        if (!imapOpen(ses, host, port, err))
+        {
+            if (log) *log << "[Экспорт] IMAP подключение: " << err << "\n";
+            return false;
+        }
+        if (!imapLogin(ses, user, pass, err))
+        {
+            if (log) *log << "[Экспорт] IMAP логин: " << err << "\n";
             imapClose(ses);
-            exit();
+            return false;
         }
 
+        if (folders.empty())
+        {
+            if (log) *log << "[Экспорт] Список IMAP-папок пуст. Проверьте imap_folders.conf\n";
+            imapClose(ses);
+            return false;
+        }
 
-        for (const auto& folder : folders_) {
+        // При экспорте на флешку используем inbox: по темам — копируем 1:1; по типам вложений — читаем папки и группируем по правилам.
+        std::map<std::string, std::pair<std::string, fs::path>> inboxUidMap;
+        fs::path outPath(outDir);
+        fs::path inboxPath = getInboxRoot();
+        const bool exportToFlash = !fs::equivalent(outPath, inboxPath);
+        if (exportToFlash)
+            inboxUidMap = buildInboxUidMap();
+
+        std::set<std::string> processedUids;
+        std::vector<fs::path> toDeleteFromInbox;
+        size_t totalExported = 0;
+
+        for (const auto& folder : folders) {
             std::vector<std::string> uids;
-
             if (!ImapClient::searchUnreadUids(ses, folder.imapName, uids, err)) {
-                std::cout << "[IMAP] search in " + folder.displayName + "failed: " << err << "\n";
+                if (log) *log << "[IMAP] search in " << folder.displayName << " failed: " << err << "\n";
             }
+            if (uids.empty() && !exportToFlash)
+                continue;
 
-            if (uids.empty()) {
-                std::cout << "[IMAP] непрочитанных писем " + folder.displayName + " нет\n";
-            }
-
-            ensureDir(outDir_);
-
+            ensureDir(outDir);
             const size_t total = uids.size();
             size_t index = 0;
 
             for (const auto &uid: uids) {
                 ++index;
+                if (log) *log << "[IMAP] " << index << "/" << total << " uid=" << uid << "\n";
 
-                std::cout << "[IMAP] "
-                          << index << "/" << total
-                          << " uid=" << uid << "\n";
-
-
-                std::string raw;
-
-                if (!ImapClient::fetchRawEmlByUid(ses, uid, raw, err)) {
-                    std::cout << "[IMAP] FETCH uid=" << uid << " failed\n";
+                auto it = inboxUidMap.find(uid);
+                if (it != inboxUidMap.end())
+                {
+                    const fs::path& srcPath = it->second.second;
+                    if (strategy.mode == ExportMode::BySubject)
+                    {
+                        const std::string& subject = it->second.first;
+                        fs::path destDir = fs::path(outDir) / subject / srcPath.filename();
+                        std::error_code ec;
+                        fs::create_directories(destDir.parent_path(), ec);
+                        if (ec) {
+                            if (log) *log << "[INBOX] Ошибка создания папки " << destDir.parent_path() << ": " << ec.message() << "\n";
+                        } else {
+                            fs::copy(srcPath, destDir, fs::copy_options::recursive, ec);
+                            if (ec) {
+                                if (log) *log << "[INBOX] Ошибка копирования " << srcPath << " → " << destDir << ": " << ec.message() << "\n";
+                            } else {
+                                if (log) *log << "[INBOX] перенесено на флешку (по темам): " << uid << "\n";
+                                ++totalExported;
+                                processedUids.insert(uid);
+                                toDeleteFromInbox.push_back(srcPath);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        std::vector<ExportedAttachment> attachments = readInboxUidFolderAsAttachments(srcPath);
+                        if (!attachments.empty())
+                        {
+                            exporter.exportAttachments("", uid, attachments);
+                            if (log) *log << "[INBOX] перенесено на флешку (по типам вложений): " << uid << "\n";
+                            ++totalExported;
+                            processedUids.insert(uid);
+                            toDeleteFromInbox.push_back(srcPath);
+                        }
+                    }
                     continue;
                 }
 
-                // --- Subject ---
+                std::string raw;
+                if (!ImapClient::fetchRawEmlByUid(ses, uid, raw, err)) {
+                    if (log) *log << "[IMAP] FETCH uid=" << uid << " failed\n";
+                    continue;
+                }
+
                 std::string headers;
                 auto p = raw.find("\r\n\r\n");
                 headers = (p != std::string::npos) ? raw.substr(0, p) : raw;
 
                 std::string subject = getHeaderValue(headers, "Subject");
                 subject = decodeRfc2047_B_words(subject);
-
                 std::string from = getHeaderValue(headers, "From");
                 from = decodeRfc2047_B_words(from);
-
                 if (from.empty())
-                    from = folder.displayName; // fallback
+                    from = folder.displayName;
 
-
-                // "маска темы" по правилам (ШТ, Служебные, ...)
                 subject = subjResolver.resolve(subject);
 
-                // --- Attachments: собираем список в память, запись делает exporter ---
                 std::vector<MimePart> parts;
                 if (!EmlParser::splitToPartsFromRaw(raw, parts, err))
                     continue;
@@ -396,66 +508,103 @@ namespace astra_mail {
                         continue;
 
                     std::vector<uint8_t> data;
-
                     if (pp.transferEncoding == "base64") {
                         data = decodeBase64(pp.body);
                     } else if (pp.transferEncoding == "quoted-printable") {
-                        data = decodeQuotedPrintable(pp.body); // ⬅️ ОБЯЗАТЕЛЬНО
+                        data = decodeQuotedPrintable(pp.body);
                     } else if (pp.transferEncoding.empty() ||
                                pp.transferEncoding == "7bit" ||
                                pp.transferEncoding == "8bit" ||
                                pp.transferEncoding == "binary") {
-                        // сохраняем "как есть"
                         data.assign(pp.body.begin(), pp.body.end());
                     } else {
-                        // неизвестное кодирование — логируем и пропускаем
-                        std::cout << "[SKIP] " << pp.filename
-                                  << " unsupported encoding="
-                                  << pp.transferEncoding << "\n";
+                        if (log) *log << "[SKIP] " << pp.filename << " unsupported encoding=" << pp.transferEncoding << "\n";
                         continue;
                     }
-
                     if (data.empty()) {
-                        std::cout << "[SKIP] " << pp.filename
-                                  << " decoded empty\n";
+                        if (log) *log << "[SKIP] " << pp.filename << " decoded empty\n";
                         continue;
                     }
 
                     ExportedAttachment a;
                     a.filename = pp.filename;
                     a.data = std::move(data);
-
                     attachments.push_back(std::move(a));
                 }
 
-
-                // ВАЖНО:
-                // - если вложений нет → exporter ничего не создаст (и папок не будет)
-                // - BySubject: subject/uid_xxx
-                // - ByExtension: общие папки по группам, dedupByHash
-                std::cout
-                        << "\n==================================================\n"
-                        << "📨 От: " << from << "\n"
-                        << "--------------------------------------------------\n";
-
-                if (attachments.empty()) {
-                    std::cout << "  (вложений нет)\n";
+                if (log) {
+                    *log << "\n==================================================\n"
+                         << "📨 От: " << from << "\n--------------------------------------------------\n";
+                    if (attachments.empty()) *log << "  (вложений нет)\n";
+                    *log << "==================================================\n";
                 }
 
                 exporter.exportAttachments(subject, uid, attachments);
-
-                std::cout
-                        << "==================================================\n";
-
-
-                // mark seen
                 ImapClient::markSeenByUid(ses, uid, err);
+                ++totalExported;
+                processedUids.insert(uid);
             }
         }
 
+        // Письма, уже скачанные в inbox (помечены прочитанными), но ещё не перенесённые на флешку
+        if (exportToFlash && !inboxUidMap.empty()) {
+            ensureDir(outDir);
+            for (const auto& kv : inboxUidMap) {
+                const std::string& uid = kv.first;
+                if (processedUids.count(uid))
+                    continue;
+                const fs::path& srcPath = kv.second.second;
+                const std::string& subject = kv.second.first;
+         
+                if (log) *log << "[INBOX] uid=" << uid << " (из локального inbox)\n";
+                if (strategy.mode == ExportMode::BySubject) {
+                    fs::path destDir = fs::path(outDir) / subject / srcPath.filename();
+                    std::error_code ec;
+                    fs::create_directories(destDir.parent_path(), ec);
+                    if (ec) {
+                        if (log) *log << "[INBOX] Ошибка создания папки " << destDir.parent_path() << ": " << ec.message() << "\n";
+                    } else {
+                        fs::copy(srcPath, destDir, fs::copy_options::recursive, ec);
+                        if (ec) {
+                            if (log) *log << "[INBOX] Ошибка копирования " << srcPath << " → " << destDir << ": " << ec.message() << "\n";
+                        } else {
+                            if (log) *log << "[INBOX] перенесено на флешку (по темам): " << uid << "\n";
+                            ++totalExported;
+                            toDeleteFromInbox.push_back(srcPath);
+                        }
+                    }
+                } else {
+                    std::vector<ExportedAttachment> attachments = readInboxUidFolderAsAttachments(srcPath);
+                    if (!attachments.empty()) {
+                        exporter.exportAttachments("", uid, attachments);
+                        if (log) *log << "[INBOX] перенесено на флешку (по типам вложений): " << uid << "\n";
+                        ++totalExported;
+                        toDeleteFromInbox.push_back(srcPath);
+                    }
+                }
+            }
+        }
 
         imapClose(ses);
-        return exit();
+
+        for (const fs::path& p : toDeleteFromInbox) {
+            std::error_code ec;
+            fs::remove_all(p, ec);
+            if (ec && log)
+                *log << "[INBOX] Не удалось удалить " << p << ": " << ec.message() << "\n";
+        }
+
+        if (log && totalExported == 0)
+            *log << "[Экспорт] Нет непрочитанных писем с вложениями для экспорта.\n";
+
+        return true;
+    }
+
+    CommandResult CmdExportUnreadToFolders::execute()
+    {
+        bool ok = runExport(host_, port_, user_, pass_, folders_, outDir_, strategy_, &std::cout);
+        my::pause();
+        return CommandResult::ExitMenu;
     }
 
     CmdExportUnreadToFolders::CmdExportUnreadToFolders(
