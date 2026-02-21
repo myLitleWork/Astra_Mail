@@ -10,7 +10,7 @@ namespace astra_mail::config
     }
     std::string imapFoldersConfig()
     {
-        return fsu::getExecutableDir() / fs::path{"/imap_folders.conf"};
+        return fsu::getExecutableDir() / fs::path{"imap_folders.conf"};
     }
     fs::path attachmentGroups()
     {
