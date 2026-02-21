@@ -26,10 +26,6 @@ class EmlParser
 {
 public:
 
-    static void parseAndSaveAttachmentsFromRaw(
-            const std::string& raw,
-            const std::string& outDir);
-
     static bool extractTopHeaders(const std::string& rawEml,
                                   std::string& headers,
                                   std::string& body);

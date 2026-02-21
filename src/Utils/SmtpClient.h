@@ -1,6 +1,5 @@
 #pragma once
 #include <string>
-#include "EmailMessage.h"
 
 class SmtpClient
 {
@@ -19,22 +18,15 @@ public:
     bool openSession(Session& ses, std::string& error);
     static void closeSession(Session& ses);
 
-    static bool sendMail(Session& ses,
-                  const EmailMessage& msg,
-                  std::string& error);
-
     bool sendMailFromFile(Session& ses,
                           const std::string& mimeFile,
                           const std::string& rcpt,
                           std::string& error);
 
-    // ===== СТАРЫЙ API (совместимость) =====
-    bool sendMail(const EmailMessage& msg, std::string& error);
     bool sendMailFromFile(const std::string& mimeFile,
                           const std::string& rcpt,
                           std::string& error);
 
-    static std::string buildRawMime(const EmailMessage& msg);
     static std::string base64(const std::string& in);
 
 private:

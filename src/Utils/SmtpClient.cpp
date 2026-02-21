@@ -3,11 +3,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <cstdio>
-#include <ios>
-#include <ctime>
-#include <sstream>
 #include <utility>
-#include "Utils/Utils.h"
 
 
 
@@ -137,78 +133,6 @@ bool SmtpClient::recvResponse(int s, std::string& reply)
 
 // ---------------- SEND MAIL ---------------------
 
-
-bool SmtpClient::sendMail(const EmailMessage& msg, std::string& error)
-{
-    Session ses;
-    if (!openSession(ses, error))
-        return false;
-
-    bool ok = sendMail(ses, msg, error);
-    closeSession(ses);
-    return ok;
-}
-
-
-
-std::string currentRfc2822Date()
-{
-    std::time_t t = std::time(nullptr);
-    std::tm tm{};
-    gmtime_r(&t, &tm);
-
-    char buf[64];
-    std::strftime(buf, sizeof(buf),
-                  "%a, %d %b %Y %H:%M:%S +0000", &tm);
-    return buf;
-}
-
-std::string generateMessageId(const std::string& from)
-{
-    auto at = from.find('@');
-    std::string domain = (at != std::string::npos)
-                         ? from.substr(at + 1)
-                         : "localhost";
-
-    std::ostringstream ss;
-    ss << std::hex << std::time(nullptr)
-       << "." << astra_mail::rnd()
-       << "@" << domain;
-
-    return ss.str();
-}
-
-
-
-
-std::string SmtpClient::buildRawMime(const EmailMessage& msg)
-{
-    const std::string crlf = "\r\n";
-
-    std::ostringstream out;
-
-    out << "Date: " << currentRfc2822Date() << crlf;
-    out << "From: " << msg.from << crlf;
-    out << "To: " << msg.to << crlf;
-    out << "Subject: " << msg.subject << crlf;
-    out << "Message-ID: <" << generateMessageId(msg.from) << ">" << crlf;
-
-    // Для нормального отображения в клиентах
-    out << "MIME-Version: 1.0" << crlf;
-    out << "Content-Type: text/plain; charset=UTF-8" << crlf;
-    out << "Content-Transfer-Encoding: 7bit" << crlf;
-    out << crlf;
-
-    out << msg.body;   // БЕЗ \r\n В КОНЦЕ
-    return out.str();
-
-}
-
-
-
-
-
-
 bool SmtpClient::sendMailFromFile(
         const std::string& mimeFile,
         const std::string& rcpt,
@@ -302,77 +226,6 @@ bool SmtpClient::sendMailFromFile(Session& ses,
             send(s, buf, r, 0);
     }
     fclose(f);
-
-    sendLine(s, ".");
-    recvResponse(s, reply);
-    return true;
-}
-
-
-
-bool SmtpClient::sendMail(Session& ses,
-                          const EmailMessage& msg,
-                          std::string& error)
-{
-    int s = ses.sock;
-    std::string reply;
-
-    sendLine(s, "MAIL FROM:<" + msg.from + ">");
-    recvResponse(s, reply);
-
-    sendLine(s, "RCPT TO:<" + msg.to + ">");
-    recvResponse(s, reply);
-
-    sendLine(s, "DATA");
-    recvResponse(s, reply);
-
-    sendLine(s, "From: " + msg.from);
-    sendLine(s, "To: " + msg.to);
-    sendLine(s, "Subject: " + msg.subject);
-
-    if (msg.attachments.empty())
-    {
-        sendLine(s, "");
-        sendLine(s, msg.body);
-    }
-    else
-    {
-        std::string boundary = "----myboundary12345";
-
-        sendLine(s, "MIME-Version: 1.0");
-        sendLine(s, "Content-Type: multipart/mixed; boundary=\"" + boundary + "\"");
-        sendLine(s, "");
-
-        sendLine(s, "--" + boundary);
-        sendLine(s, "Content-Type: text/plain; charset=utf-8");
-        sendLine(s, "");
-        sendLine(s, msg.body);
-
-        for (const auto& a : msg.attachments)
-        {
-            sendLine(s, "--" + boundary);
-            sendLine(s, "Content-Type: application/octet-stream");
-            sendLine(s, "Content-Disposition: attachment; filename=\"" + a.filename + "\"");
-            sendLine(s, "Content-Transfer-Encoding: base64");
-            sendLine(s, "");
-
-            FILE* f = fopen(a.path.c_str(), "rb");
-            if (!f) continue;
-
-            unsigned char buf[57];
-            while (true)
-            {
-                size_t r = fread(buf, 1, sizeof(buf), f);
-                if (r == 0) break;
-
-                std::string chunk(reinterpret_cast<char*>(buf), r);
-                sendLine(s, base64(chunk));
-            }
-            fclose(f);
-        }
-
-        sendLine(s, "--" + boundary + "--");
-    }
 
     sendLine(s, ".");
     recvResponse(s, reply);
