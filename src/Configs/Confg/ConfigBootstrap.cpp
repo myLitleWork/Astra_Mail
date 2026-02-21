@@ -25,4 +25,9 @@ namespace astra_mail::config
     {
         ensureFile(attachmentGroups(), defaults::attachmentGroups(), force);
     }
+
+    void ensureOutgoingSubjectRules(bool force)
+    {
+        ensureFile(outgoingSubjectRules(), defaults::outgoingSubjectRules(), force);
+    }
 }

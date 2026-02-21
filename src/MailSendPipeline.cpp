@@ -1,4 +1,7 @@
 #include "MailSendPipeline.h"
+#include "Resolver/Resolvers/OutgoingSubjectResolver.h"
+#include "Configs/Confg/ConfigPaths.h"
+#include "Configs/Confg/ConfigBootstrap.h"
 #include "src/Utils/EmailMessage.h"
 #include "src/Utils/ImapClient.h"
 #include "MimeFileBuilder.h"
@@ -47,10 +50,20 @@ namespace astra_mail
 
         status("prepare message");
 
+        std::vector<std::string> attachmentNames;
+        for (const auto& a : info.attachments)
+            attachmentNames.push_back(a.name);
+
+        config::ensureOutgoingSubjectRules(false);
+        OutgoingSubjectResolver subjectResolver(config::outgoingSubjectRules());
+        subjectResolver.load();
+
+        std::string subject = subjectResolver.resolve(attachmentNames);
+
         EmailMessage msg;
         msg.from    = user_;
         msg.to      = info.recipient;
-        msg.subject = "ШТ";
+        msg.subject = subject;
         msg.body    = "Во вложении документы.";
 
         msg.attachments.clear();
@@ -126,10 +139,20 @@ namespace astra_mail
 
         status("prepare message");
 
+        std::vector<std::string> attachmentNames;
+        for (const auto& a : info.attachments)
+            attachmentNames.push_back(a.name);
+
+        config::ensureOutgoingSubjectRules(false);
+        OutgoingSubjectResolver subjectResolver(config::outgoingSubjectRules());
+        subjectResolver.load();
+
+        std::string subject = subjectResolver.resolve(attachmentNames);
+
         EmailMessage msg;
         msg.from    = user_;
         msg.to      = info.recipient;
-        msg.subject = "ШТ";
+        msg.subject = subject;
         msg.body    = "Во вложении документы.";
 
         msg.attachments.clear();

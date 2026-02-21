@@ -16,4 +16,9 @@ namespace astra_mail::config
     {
         return fsu::getExecutableDir() / fs::path{"attachment_groups.conf"};
     }
+
+    fs::path outgoingSubjectRules()
+    {
+        return fsu::getExecutableDir() / fs::path{"outgoing_subject_rules.conf"};
+    }
 }

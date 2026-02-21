@@ -22,6 +22,7 @@
 #include "menu/Commands/Server/CmdScanThunderbirdProfiles.h"
 #include "Utils/Utils.h"
 #include "menu/Commands/Server/CmdApplyThunderbirdAccount.h"
+#include "menu/Commands/Server/CmdCheckServers.h"
 #include "src/menu/Commands/Mails/CmdExportUnreadToFolders.h"
 #include "menu/Commands/Configs/CmdEditConfig.h"
 #include "Configs/Confg/ConfigPaths.h"
@@ -448,6 +449,7 @@ namespace astra_mail::menu
                 )
         );
 
+        menu->add(std::make_unique<CmdCheckServers>());
         menu->add(std::make_unique<CmdEnableUsbMount>());
 
         menu->add(
@@ -516,6 +518,19 @@ namespace astra_mail::menu
                     config::ensureAttachmentGroups(force);
                 }));
 
+        menu->add(std::make_unique<CmdEditConfig>(
+                ConfigItem{
+                        "Редактировать правила темы исходящего",
+                        config::outgoingSubjectRules()
+                }));
+
+        menu->add(std::make_unique<CmdResetConfig>(
+                "Пересоздать правила темы исходящего",
+                [](bool force)
+                {
+                    config::ensureOutgoingSubjectRules(force);
+                }));
+
         menu->add(std::make_unique<CmdInfo>(
                 "Справка: правила темы письма",
                 config::defaults::subjectRulesHelp()
@@ -526,6 +541,10 @@ namespace astra_mail::menu
                 config::defaults::attachmentGroupsHelp()
         ));
 
+        menu->add(std::make_unique<CmdInfo>(
+                "Справка: правила темы исходящего",
+                config::defaults::outgoingSubjectRulesHelp()
+        ));
 
         menu->add(std::make_unique<CmdBack>());
 

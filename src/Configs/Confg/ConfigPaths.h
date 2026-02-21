@@ -7,5 +7,6 @@ namespace astra_mail::config
 {
     fs::path subjectRules();
     fs::path attachmentGroups();
+    fs::path outgoingSubjectRules();
     std::string imapFoldersConfig();
 }
