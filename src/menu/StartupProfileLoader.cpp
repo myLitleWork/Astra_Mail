@@ -6,6 +6,10 @@
 #include "ContactsManager.h"
 #include "Utils/Utils.h"
 #include "UtilsFS/FsCompat.h"
+#include "Utils/ImapClient.h"
+#include "Utils/SmtpClient.h"
+
+#include <iostream>
 
 namespace astra_mail
 {
@@ -107,6 +111,81 @@ namespace astra_mail
         return true;
     }
 
+    bool checkServers()
+    {
+        auto& tb = ThunderbirdSettings::instance();
 
+        if (!tb.active().valid())
+        {
+            std::cout << "[Проверка серверов] Аккаунт не выбран.\n";
+            my::pause();
+            return false;
+        }
+
+        if (!tb.hasMailPassword())
+        {
+            std::cout << "[Проверка серверов] Пароль почты не задан.\n";
+            my::pause();
+            return false;
+        }
+
+        const auto& active = tb.active();
+        const auto& imap = tb.imapServers().at(active.imapServerId);
+        const auto& smtpConfig = tb.smtpServers().at(active.smtpServerId);
+        const std::string& password = tb.mailPassword();
+
+        std::string err;
+
+        // Проверка IMAP
+        std::vector<std::string> folders;
+        if (!ImapClient::listMailboxes(imap.host, imap.port, imap.user, password, folders, err))
+        {
+            std::cout << "[Проверка серверов] IMAP недоступен: " << imap.host << ":" << imap.port
+                      << " — " << err << "\n";
+            my::pause();
+            return false;
+        }
+
+        // Проверка SMTP
+        SmtpClient smtp(smtpConfig.host, smtpConfig.port);
+        smtp.setCredentials(smtpConfig.user, password);
+        SmtpClient::Session ses;
+        if (!smtp.openSession(ses, err))
+        {
+            std::cout << "[Проверка серверов] SMTP недоступен: " << smtpConfig.host << ":" << smtpConfig.port
+                      << " — " << err << "\n";
+            my::pause();
+            return false;
+        }
+        SmtpClient::closeSession(ses);
+
+        std::cout << "[Проверка серверов] IMAP и SMTP доступны.\n";
+        return true;
+    }
+
+    bool checkServersSilent()
+    {
+        auto& tb = ThunderbirdSettings::instance();
+        if (!tb.active().valid() || !tb.hasMailPassword())
+            return false;
+
+        const auto& active = tb.active();
+        const auto& imap = tb.imapServers().at(active.imapServerId);
+        const auto& smtpConfig = tb.smtpServers().at(active.smtpServerId);
+        const std::string& password = tb.mailPassword();
+        std::string err;
+
+        std::vector<std::string> folders;
+        if (!ImapClient::listMailboxes(imap.host, imap.port, imap.user, password, folders, err))
+            return false;
+
+        SmtpClient smtp(smtpConfig.host, smtpConfig.port);
+        smtp.setCredentials(smtpConfig.user, password);
+        SmtpClient::Session ses;
+        if (!smtp.openSession(ses, err))
+            return false;
+        SmtpClient::closeSession(ses);
+        return true;
+    }
 
 } // namespace astra_mail

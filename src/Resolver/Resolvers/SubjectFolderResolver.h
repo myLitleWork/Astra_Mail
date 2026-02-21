@@ -15,7 +15,7 @@ public:
     bool load();
 
     // определить папку по теме письма
-    [[nodiscard]] std::string resolve(const std::string& subject) const;
+    std::string resolve(const std::string& subject) const;
 
 private:
     enum class RuleType

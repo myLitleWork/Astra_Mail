@@ -11,7 +11,7 @@ namespace astra_mail
     public:
         explicit CmdApplyThunderbirdAccount(AccountConfig  acc, TbProfile  profile);
 
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
         CommandResult execute() override;
 
     private:

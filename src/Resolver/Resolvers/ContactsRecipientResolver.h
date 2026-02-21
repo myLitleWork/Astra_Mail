@@ -19,7 +19,7 @@ namespace astra_mail
     public:
         explicit ContactsRecipientResolver(const ContactsManager& cm);
 
-        [[nodiscard]] optional<std::string>
+        optional<std::string>
         resolve(const std::string& input) const override;
 
     private:

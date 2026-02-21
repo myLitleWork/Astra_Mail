@@ -1,5 +1,6 @@
 #pragma once
 #include "menu/Command.h"
+#include <ostream>
 
 namespace astra_mail
 {
@@ -7,7 +8,10 @@ namespace astra_mail
     {
     public:
         CmdSendMailsFromOutbox();
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
         CommandResult execute() override;
+
+        /** Отправка писем из outbox. log == nullptr — тихий режим (для фона). Возвращает true при успехе или если нечего отправлять. */
+        static bool runSendFromOutbox(std::ostream* log);
     };
 }

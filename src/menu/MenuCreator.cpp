@@ -8,6 +8,7 @@
 #include "src/menu/Commands/Mails/CmdSendMailsFromPath.h"
 #include "src/menu/Commands/Mails/CmdViewOutboxMails.h"
 #include "src/menu/Commands/Mails/CmdSendMailsFromOutbox.h"
+#include "src/menu/Commands/Mails/CmdViewInboxMails.h"
 #include "src/menu/Commands/Menu/CmdBack.h"
 #include "src/menu/Commands/Flash+Mount/CmdMountFlash.h"
 #include "src/menu/Commands/Menu/CmdOpenMenu.h"
@@ -223,7 +224,14 @@ namespace astra_mail::menu
         menu->add(
                 std::make_unique<CmdOpenMenu>(
                         []() { return createOutboxMenu(); },
-                        "Работа с outbox"
+                        "Работа с исходящими"
+                )
+        );
+
+        menu->add(
+                std::make_unique<CmdOpenMenu>(
+                        []() { return createInboxMenu(); },
+                        "Работа с входящими"
                 )
         );
 
@@ -560,14 +568,26 @@ namespace astra_mail::menu
         return menu;
     }
 
-// ==================== МЕНЮ «OUTBOX» ====================
+// ==================== МЕНЮ «ИСХОДЯЩИЕ» ====================
 
     std::unique_ptr<Menu> createOutboxMenu()
     {
-        auto menu = std::make_unique<Menu>("Outbox");
+        auto menu = std::make_unique<Menu>("Исходящие");
 
         menu->add(std::make_unique<CmdViewOutboxMails>());
         menu->add(std::make_unique<CmdSendMailsFromOutbox>());
+        menu->add(std::make_unique<CmdBack>());
+
+        return menu;
+    }
+
+// ==================== МЕНЮ «ВХОДЯЩИЕ» ====================
+
+    std::unique_ptr<Menu> createInboxMenu()
+    {
+        auto menu = std::make_unique<Menu>("Входящие");
+
+        menu->add(std::make_unique<CmdViewInboxMails>());
         menu->add(std::make_unique<CmdBack>());
 
         return menu;

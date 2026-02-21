@@ -12,7 +12,7 @@ namespace astra_mail
     struct ICommand
     {
         virtual ~ICommand() = default;
-        [[nodiscard]] virtual std::string title() const = 0;
+        virtual std::string title() const = 0;
         virtual CommandResult execute() = 0;
     };
 }

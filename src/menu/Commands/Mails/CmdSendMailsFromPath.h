@@ -7,7 +7,7 @@ namespace astra_mail
     {
         std::string path_;
     public:
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
 
 
         CommandResult execute() override;

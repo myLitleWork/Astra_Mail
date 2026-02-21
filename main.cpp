@@ -1,6 +1,7 @@
 #include "menu/MenuCreator.h"
 #include "ThunderbirdSettings.h"
 #include "menu/StartupProfileLoader.h"
+#include "IdleBackground.h"
 
 #include <string>
 
@@ -31,11 +32,10 @@ void runStartup()
     if (!astra_mail::pinMenu())
         goto BOOT;
 
-    /*
     CONNECTION_CHECK:
-    if (!checkServers())
+    // 5. Проверка доступности IMAP и SMTP
+    if (!astra_mail::checkServers())
         goto PIN_CHECK;
-    */
 
     MAIN_MENU:
     ; // runMainMenu();
@@ -54,9 +54,10 @@ int main()
 
     runStartup();
 
+    astra_mail::IdleBackground::instance().start();
 
     auto  menu = menu::createMainMenu();
     menu->run();
 
-
+    astra_mail::IdleBackground::instance().stop();
 }

@@ -5,21 +5,12 @@
 #include "Resolver/Resolvers/ContactsRecipientResolver.h"
 #include "src/ContactsManager.h"
 #include "UtilsFS/FsCompat.h"
+#include "AstraMailPaths.h"
 #include <stdexcept>
 #include <iostream>
 
 namespace astra_mail
 {
-    static fs::path getOutboxRoot()
-    {
-        const char* home = getenv("HOME");
-        if (!home)
-            throw std::runtime_error("HOME not set");
-
-        fs::path root = fs::path(home) / ".local/share/AstraMail/outbox";
-        return root;
-    }
-
     CommandResult CmdViewOutboxMails::execute()
     {
         auto resolver = std::make_shared<ContactsRecipientResolver>(ContactsManager::instance());
@@ -46,6 +37,6 @@ namespace astra_mail
     }
 
     std::string CmdViewOutboxMails::title() const {
-        return "Просмотр писем в outbox";
+        return "Просмотр писем в исходящих";
     }
 }

@@ -8,6 +8,7 @@
 #include "src/ContactsManager.h"
 #include "UtilsFS/FsCompat.h"
 #include "src/Utils/SmtpClient.h"
+#include "AstraMailPaths.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -16,93 +17,60 @@ namespace astra_mail
 {
     MailSendPipeline createPipelineFromThunderbird(); // определена в CmdSendMailsFromPath.cpp
 
-    static fs::path getOutboxRoot()
-    {
-        const char* home = getenv("HOME");
-        if (!home)
-            throw std::runtime_error("HOME not set");
-
-        fs::path root = fs::path(home) / ".local/share/AstraMail/outbox";
-        return root;
-    }
-
-    CommandResult CmdSendMailsFromOutbox::execute()
+    bool CmdSendMailsFromOutbox::runSendFromOutbox(std::ostream* log)
     {
         auto outboxPath = getOutboxRoot();
-
-        // Проверка существования outbox
         if (!fs::exists(outboxPath))
-        {
-            std::cout << "Outbox не существует или пуст.\n";
-            my::pause();
-            return CommandResult::ExitMenu;
-        }
+            return true;
 
-        // Сканирование outbox
         auto resolver = std::make_shared<ContactsRecipientResolver>(ContactsManager::instance());
-        MailFolderScanner scanner({true,true,false}, resolver);
+        MailFolderScanner scanner({true, true, false}, resolver);
         auto localResult = scanner.scanMount(outboxPath);
 
-        MailFolderReport::print(std::cout, localResult);
+        if (localResult.mails.empty())
+            return true;
 
-        if(localResult.mails.empty())
-        {
-            std::cout << "В outbox нет писем для отправки.\n";
-            my::pause();
-            return CommandResult::ExitMenu;
-        }
+        if (log)
+            MailFolderReport::print(*log, localResult);
 
         auto& tb = ThunderbirdSettings::instance();
-
         if (!tb.active().valid())
-        {
-            std::cout << "Почтовый аккаунт не выбран.\n";
-            my::pause();
-            return CommandResult::ExitMenu;
-        }
+            return false;
 
         MailSendPipeline pipe = createPipelineFromThunderbird();
-
-        // SMTP создаётся ИЗ пайплайна
         SmtpClient smtp(pipe.smtpHost(), pipe.smtpPort());
         smtp.setCredentials(pipe.smtpUser(), pipe.smtpPass());
 
         SmtpClient::Session ses;
         std::string err;
-
         if (!smtp.openSession(ses, err))
-        {
-            std::cout << "\n[SMTP] session open failed: " << err << "\n";
-            my::pause();
-            return CommandResult::ExitMenu;
-        }
+            return false;
 
         for (auto& mail : localResult.mails)
         {
-            std::cout << "\n[ОТПРАВКА] " << mail.recipient << " ...";
-            std::cout.flush();
+            if (log) *log << "\n[ОТПРАВКА] " << mail.recipient << " ..." << std::flush;
 
-            std::string log;
-
-            bool ok = pipe.send(mail, log, smtp, ses);
-
-            std::cout << "\r";
+            std::string sendLog;
+            bool ok = pipe.send(mail, sendLog, smtp, ses);
 
             if (ok)
             {
-                std::cout << "[ОТПРАВЛЕНО] " << mail.recipient << " ✓    ";
+                if (log) *log << "\r[ОТПРАВЛЕНО] " << mail.recipient << " ✓    ";
                 fs::remove_all(mail.folderPath);
             }
-            else
-            {
-                std::cout << "[НЕ ОТПРАВЛЕНО] " << mail.recipient << " ✗    ";
-            }
+            else if (log)
+                *log << "\r[НЕ ОТПРАВЛЕНО] " << mail.recipient << " ✗    ";
 
-            std::cout.flush();
+            if (log) *log << std::flush;
         }
 
-        smtp.closeSession(ses);
+        SmtpClient::closeSession(ses);
+        return true;
+    }
 
+    CommandResult CmdSendMailsFromOutbox::execute()
+    {
+        runSendFromOutbox(&std::cout);
         my::pause();
         return CommandResult::ExitMenu;
     }
@@ -112,6 +80,6 @@ namespace astra_mail
     }
 
     std::string CmdSendMailsFromOutbox::title() const {
-        return "Отправить письма из outbox";
+        return "Отправить письма из исходящих";
     }
 }

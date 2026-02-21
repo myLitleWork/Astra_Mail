@@ -38,6 +38,11 @@ namespace astra_mail
         optional<int> readChoice();   // вместо int
         std::string lastInput_;
 
+        /** Пустой или только пробелы — выход из фонового экрана. */
+        bool wasBlankInput() const {
+            return lastInput_.find_first_not_of(" \t\n\r") == std::string::npos;
+        }
+
         bool runMainMenu();
         virtual void printHeader();
         virtual void printItems();

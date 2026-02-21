@@ -18,7 +18,7 @@ namespace astra_mail
     {
     public:
         explicit MailFolderScanner(MailFolderScanOptions opt, std::shared_ptr<IRecipientResolver> resolver);
-        [[nodiscard]] FlashMailScanResult scanMount(const fs::path& mountPoint) const;
+        FlashMailScanResult scanMount(const fs::path& mountPoint) const;
 
         // утилита форматирования размера (для отчёта)
         static std::string formatBytes(uint64_t bytes);

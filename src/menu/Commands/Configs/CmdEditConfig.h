@@ -9,7 +9,7 @@ namespace astra_mail
     public:
         explicit CmdEditConfig(ConfigItem item);
 
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
         CommandResult execute() override;
 
     private:

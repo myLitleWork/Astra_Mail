@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.7)
 project(AstraMail)
 
 # ---------------- C++ ----------------
-add_compile_options(-std=gnu++17)
 
 
 # ---------------- OPTIONS ----------------
@@ -67,8 +66,10 @@ target_include_directories(AstraMail PRIVATE
         )
 
 # ---------------- FLAGS ----------------
+# -std=gnu++17 только для C++, не для C (sqlite3.c) — через generator expression
 target_compile_options(AstraMail PRIVATE
         -no-pie
+        $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++17>
         )
 
 set_target_properties(AstraMail PROPERTIES

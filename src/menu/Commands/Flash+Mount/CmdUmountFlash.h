@@ -10,7 +10,7 @@ namespace astra_mail
     public:
         explicit CmdUmountFlash(const FlashDriveInfo& drive);
 
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
         CommandResult execute() override;
 
     private:

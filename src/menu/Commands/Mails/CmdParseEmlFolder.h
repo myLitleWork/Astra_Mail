@@ -31,7 +31,7 @@ namespace astra_mail {
         CmdParseEmlFolder(std::string inDir,
                           std::string outDir);
 
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
         CommandResult execute() override;
 
     private:

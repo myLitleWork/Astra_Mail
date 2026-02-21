@@ -108,7 +108,7 @@ static std::string extractRfc2231Filename(const std::string& headers)
 
     // 2️⃣ RFC 2231: составной вариант filename*0*= ...
     std::string result;
-    [[maybe_unused]] std::string charset;
+    std::string charset;
 
     for (int i = 0; i < 10; ++i) // обычно хватает 0..2
     {

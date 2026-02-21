@@ -9,25 +9,10 @@
 #include <iostream>
 
 #include "UtilsFS/FsCompat.h"
-
+#include "AstraMailPaths.h"
 
 #include <stdexcept>
 #include <fstream>
-
-
-static fs::path getOutboxRoot()
-{
-    const char* home = getenv("HOME");
-    if (!home)
-        throw std::runtime_error("HOME not set");
-
-    fs::path root = fs::path(home) / ".local/share/AstraMail/outbox";
-
-    fs::create_directories(root);
-    return root;
-}
-
-
 
 fs::path makeUnique(
         const fs::path& dir,

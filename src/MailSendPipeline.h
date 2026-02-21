@@ -11,10 +11,10 @@ namespace astra_mail
     {
     public:
 
-        [[nodiscard]] const std::string& smtpHost() const { return smtpHost_; }
-        [[nodiscard]] int smtpPort() const { return smtpPort_; }
-        [[nodiscard]] const std::string& smtpUser() const { return user_; }
-        [[nodiscard]] const std::string& smtpPass() const { return pass_; }
+        const std::string& smtpHost() const { return smtpHost_; }
+        int smtpPort() const { return smtpPort_; }
+        const std::string& smtpUser() const { return user_; }
+        const std::string& smtpPass() const { return pass_; }
 
 
         MailSendPipeline(const std::string& smtpHost, int smtpPort,

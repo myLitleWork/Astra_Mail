@@ -16,4 +16,10 @@ namespace astra_mail
     bool profileSetupMenu();
 
     bool tryLoadSavedProfile(TbProfile& outProfile);
+
+    /** Проверка подключения к IMAP и SMTP серверам активного аккаунта. Возвращает true только если оба доступны. */
+    bool checkServers();
+
+    /** То же без вывода и паузы (для фонового потока). */
+    bool checkServersSilent();
 }

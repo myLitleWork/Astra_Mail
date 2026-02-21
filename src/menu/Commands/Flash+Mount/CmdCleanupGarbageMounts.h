@@ -8,7 +8,7 @@ namespace astra_mail
     public:
         CmdCleanupGarbageMounts() = default;
 
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
         CommandResult execute() override;
     };
 }

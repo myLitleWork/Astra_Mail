@@ -6,7 +6,7 @@ namespace astra_mail
     class StubRecipientResolver : public IRecipientResolver
     {
     public:
-        [[nodiscard]] optional<std::string>
+        optional<std::string>
         resolve(const std::string& folderName) const override;
     };
 }

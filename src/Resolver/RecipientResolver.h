@@ -18,7 +18,7 @@ namespace astra_mail
 
         // вернуть email по имени папки
         // std::nullopt → невалидный получатель
-        [[nodiscard]] virtual optional<std::string>
+        virtual optional<std::string>
         resolve(const std::string& folderName) const = 0;
     };
 }

@@ -3,6 +3,7 @@
 #include "menu/AttachmentExporter.h"
 #include <string>
 #include <utility>
+#include <ostream>
 
 namespace astra_mail {
 
@@ -38,8 +39,16 @@ namespace astra_mail {
 
 
 
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
         CommandResult execute() override;
+
+        /** Ядро экспорта непрочитанных в каталог. log == nullptr — тихий режим (для фона). */
+        static bool runExport(const std::string& host, int port,
+                             const std::string& user, const std::string& pass,
+                             const std::vector<ImapFolder>& folders,
+                             const std::string& outDir,
+                             ExportStrategy strategy,
+                             std::ostream* log);
 
     private:
 

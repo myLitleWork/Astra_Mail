@@ -1,4 +1,5 @@
 #include "Menu.h"
+#include "IdleBackground.h"
 #include <thread>
 #include <chrono>
 #include <utility>
@@ -64,6 +65,8 @@ namespace astra_mail
         auto cOpt = readChoice();
         if (!cOpt)
         {
+            if (wasBlankInput())
+                return true;  // Enter без ввода — выход из фонового экрана, обновить меню
             showError("Неверный выбор");
             return true;
         }
@@ -77,6 +80,8 @@ namespace astra_mail
             showError("Неверный выбор");
             return true;
         }
+
+        IdleBackground::instance().resetTimer();
 
         auto res = cmds_[c - 1]->execute();
 
@@ -106,10 +111,14 @@ namespace astra_mail
         std::cout.flush();
 
         std::string s;
-        if (!std::getline(std::cin >> std::ws, s))   // важно: >> std::ws
+        if (!std::getline(std::cin, s))
             return std::experimental::nullopt;
 
         lastInput_ = s;
+
+        // Пустой ввод (только Enter) — выход из фонового экрана
+        if (s.find_first_not_of(" \t\n\r") == std::string::npos)
+            return std::experimental::nullopt;
 
         try
         {

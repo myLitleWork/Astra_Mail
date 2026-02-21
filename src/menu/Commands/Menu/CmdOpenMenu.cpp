@@ -3,8 +3,11 @@
 //
 
 #include "CmdOpenMenu.h"
+#include "IdleBackground.h"
 
 astra_mail::CommandResult astra_mail::CmdOpenMenu::execute() {
+
+    astra_mail::IdleBackground::instance().resetTimer();
 
     auto menu = factory_();   // ← КАЖДЫЙ РАЗ НОВОЕ МЕНЮ
     menu->run();

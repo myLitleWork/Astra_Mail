@@ -11,6 +11,7 @@ namespace astra_mail::menu
         std::unique_ptr<Menu> createFlashMenu(FlashContext ctx);
 
         std::unique_ptr<Menu> createOutboxMenu();
+        std::unique_ptr<Menu> createInboxMenu();
 
         std::unique_ptr<Menu> createMainFlashMenu();
 

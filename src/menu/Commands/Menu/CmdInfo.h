@@ -10,7 +10,7 @@ namespace astra_mail
     public:
         CmdInfo(std::string title, std::string message);
 
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
         CommandResult execute() override;
 
 

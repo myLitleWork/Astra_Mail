@@ -52,15 +52,15 @@ public:
     /* --- «квери-подобные» новинки --- */
     void first();                 // курсор → первый ряд
     void next();                  // курсор++
-    [[nodiscard]] bool eof() const;  // достигнут конец?
-    [[nodiscard]] const Row& current() const; // текущий ряд
+    bool eof() const;  // достигнут конец?
+    const Row& current() const; // текущий ряд
 
     /* STL-итераторы (для range-for) */
-    [[nodiscard]] const_iterator begin() const;
-    [[nodiscard]] const_iterator end() const;
+    const_iterator begin() const;
+    const_iterator end() const;
 
     /* Быстрый доступ к полю текущего ряда */
-    [[nodiscard]] const std::string& value(const std::string& field) const;
+    const std::string& value(const std::string& field) const;
 
 private:
     void connect(const std::string& base_dir);

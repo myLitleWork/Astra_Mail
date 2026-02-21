@@ -9,7 +9,7 @@ namespace astra_mail {
 
         CommandResult execute() override;
 
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
 
 
     };

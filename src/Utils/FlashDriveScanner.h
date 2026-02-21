@@ -30,7 +30,7 @@ public:
     // Основная функция
     void scan();
 
-    [[nodiscard]] const std::vector<FlashDriveInfo>& getDrives() const { return drives; }
+    const std::vector<FlashDriveInfo>& getDrives() const { return drives; }
 
     // Удаление мусорных каталогов автомонтирования
     static void cleanupGarbageMounts();

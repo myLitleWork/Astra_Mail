@@ -7,7 +7,7 @@ namespace astra_mail
     class CmdEnableUsbMount : public ICommand
     {
     public:
-        [[nodiscard]] std::string title() const override;
+        std::string title() const override;
         CommandResult execute() override;
 
     private:
