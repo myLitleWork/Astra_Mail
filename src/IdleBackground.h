@@ -38,8 +38,6 @@ namespace astra_mail
 
         mutable std::mutex coutMutex_;
         std::chrono::steady_clock::time_point lastActivity_;
-        static constexpr std::chrono::minutes idleThreshold_{1};
-        static constexpr std::chrono::seconds checkInterval_{10};
 
         std::atomic<bool> stop_{false};
         std::thread thread_;

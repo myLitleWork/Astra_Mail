@@ -34,9 +34,30 @@ namespace astra_mail::config::defaults
         return
                 "# Правила темы исходящего письма по именам вложений\n"
                 "# тема : расширения или prefix:имя\n\n"
-                "ПОДТВЕРЖДЕНИЕ : .tv .tvd prefix:ptdtv prefix:pdtv\n"
+                "ПОДТВЕРЖДЕНИЕ : .tv .tvd prefix:пдтв prefix:pdtv\n"
                 "СЛУЖЕБНОЕ : prefix:sluj\n"
                 "ШТ : *\n";
+    }
+
+    const char* idleSettings()
+    {
+        return
+                "# Интервалы фонового режима (бездействие), в секундах\n"
+                "# idle_threshold_seconds — порог бездействия (сек), после которого запускается экспорт и отправка\n"
+                "# check_interval_seconds — интервал проверки (сек)\n\n"
+                "idle_threshold_seconds=300\n"
+                "check_interval_seconds=30\n";
+    }
+
+    const char* idleSettingsHelp()
+    {
+        return
+                "Интервалы фонового режима (бездействие), все значения в СЕКУНДАХ:\n\n"
+                "idle_threshold_seconds — порог бездействия.\n"
+                "  После этого времени без действий в меню выполняется экспорт непрочитанных\n"
+                "  в локальный inbox и отправка писем из outbox. По умолчанию: 300 (5 мин).\n\n"
+                "check_interval_seconds — интервал проверки.\n"
+                "  Как часто проверять, наступило ли время бездействия. По умолчанию: 30 сек.\n";
     }
 
     const char* subjectRulesHelp()

@@ -28,14 +28,26 @@ namespace astra_mail
         auto localResult = scanner.scanMount(outboxPath);
 
         if (localResult.mails.empty())
+        {
+            if (log) *log << "Папка исходящих пуста. Добавьте письма в ~/.local/share/AstraMail/outbox/<получатель>/\n";
             return true;
+        }
 
         if (log)
             MailFolderReport::print(*log, localResult);
 
         auto& tb = ThunderbirdSettings::instance();
         if (!tb.active().valid())
+        {
+            if (log) *log << "[Ошибка] Почтовый аккаунт не выбран. Выберите аккаунт в профиле Thunderbird.\n";
             return false;
+        }
+
+        if (!tb.hasMailPassword())
+        {
+            if (log) *log << "[Ошибка] Пароль почты не задан. Введите PIN в меню безопасности.\n";
+            return false;
+        }
 
         MailSendPipeline pipe = createPipelineFromThunderbird();
         SmtpClient smtp(pipe.smtpHost(), pipe.smtpPort());
@@ -44,7 +56,10 @@ namespace astra_mail
         SmtpClient::Session ses;
         std::string err;
         if (!smtp.openSession(ses, err))
+        {
+            if (log) *log << "[Ошибка] SMTP недоступен: " << err << "\n";
             return false;
+        }
 
         for (auto& mail : localResult.mails)
         {
@@ -70,7 +85,9 @@ namespace astra_mail
 
     CommandResult CmdSendMailsFromOutbox::execute()
     {
-        runSendFromOutbox(&std::cout);
+        bool ok = runSendFromOutbox(&std::cout);
+        if (!ok)
+            std::cout << "[Ошибка] Отправка не выполнена. Проверьте аккаунт и соединение с сервером.\n";
         my::pause();
         return CommandResult::ExitMenu;
     }

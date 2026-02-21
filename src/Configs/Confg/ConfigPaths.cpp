@@ -21,4 +21,9 @@ namespace astra_mail::config
     {
         return fsu::getExecutableDir() / fs::path{"outgoing_subject_rules.conf"};
     }
+
+    fs::path idleSettings()
+    {
+        return fsu::getExecutableDir() / fs::path{"idle_settings.conf"};
+    }
 }

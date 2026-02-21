@@ -9,6 +9,7 @@
 #include "src/menu/Commands/Mails/CmdViewOutboxMails.h"
 #include "src/menu/Commands/Mails/CmdSendMailsFromOutbox.h"
 #include "src/menu/Commands/Mails/CmdViewInboxMails.h"
+#include "src/menu/Commands/Mails/CmdExportUnreadToInbox.h"
 #include "src/menu/Commands/Mails/CmdCleanupOutbox.h"
 #include "src/menu/Commands/Mails/CmdCleanupInbox.h"
 #include "src/menu/Commands/Menu/CmdBack.h"
@@ -524,11 +525,24 @@ namespace astra_mail::menu
                         config::outgoingSubjectRules()
                 }));
 
+        menu->add(std::make_unique<CmdEditConfig>(
+                ConfigItem{
+                        "Интервалы фонового режима (бездействие)",
+                        config::idleSettings()
+                }));
+
         menu->add(std::make_unique<CmdResetConfig>(
                 "Пересоздать правила темы исходящего",
                 [](bool force)
                 {
                     config::ensureOutgoingSubjectRules(force);
+                }));
+
+        menu->add(std::make_unique<CmdResetConfig>(
+                "Пересоздать настройки фонового режима",
+                [](bool force)
+                {
+                    config::ensureIdleSettings(force);
                 }));
 
         menu->add(std::make_unique<CmdInfo>(
@@ -544,6 +558,11 @@ namespace astra_mail::menu
         menu->add(std::make_unique<CmdInfo>(
                 "Справка: правила темы исходящего",
                 config::defaults::outgoingSubjectRulesHelp()
+        ));
+
+        menu->add(std::make_unique<CmdInfo>(
+                "Справка: интервалы фонового режима",
+                config::defaults::idleSettingsHelp()
         ));
 
         menu->add(std::make_unique<CmdBack>());
@@ -610,8 +629,9 @@ namespace astra_mail::menu
         auto menu = std::make_unique<Menu>("Входящие");
 
         menu->add(std::make_unique<CmdViewInboxMails>());
+        menu->add(std::make_unique<CmdExportUnreadToInbox>());
         menu->add(std::make_unique<CmdOpenMenu>(
-                []() { return createMainFlashMenu(); },
+                []() { return createFlashMenu(FlashContext::ReciveMails); },
                 "Экспорт на флешку"
         ));
         menu->add(std::make_unique<CmdCleanupInbox>());

@@ -1,4 +1,5 @@
 #include "IdleBackground.h"
+#include "IdleSettings.h"
 #include "menu/StartupProfileLoader.h"
 #include "ThunderbirdSettings.h"
 #include "AstraMailPaths.h"
@@ -50,18 +51,23 @@ namespace astra_mail
     {
         while (!stop_)
         {
-            for (int i = 0; i < checkInterval_.count() && !stop_; ++i)
+            IdleSettingsValues settings = loadIdleSettings();
+            uint32_t checkSec = (settings.checkIntervalSeconds > 0) ? settings.checkIntervalSeconds : 30u;
+            uint32_t idleSec = (settings.idleThresholdSeconds > 0) ? settings.idleThresholdSeconds : 300u;
+
+            for (uint32_t i = 0; i < checkSec && !stop_; ++i)
                 std::this_thread::sleep_for(std::chrono::seconds(1));
 
             if (stop_)
                 break;
 
             auto now = std::chrono::steady_clock::now();
-            if (now - lastActivity_ < idleThreshold_)
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastActivity_).count();
+            if (static_cast<uint32_t>(elapsed) < idleSec)
                 continue;
 
             runActions();
-            resetTimer(); // чтобы не крутить подряд; следующий цикл через idleThreshold_
+            resetTimer();
         }
     }
 

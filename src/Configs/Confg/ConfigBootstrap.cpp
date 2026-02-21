@@ -30,4 +30,9 @@ namespace astra_mail::config
     {
         ensureFile(outgoingSubjectRules(), defaults::outgoingSubjectRules(), force);
     }
+
+    void ensureIdleSettings(bool force)
+    {
+        ensureFile(idleSettings(), defaults::idleSettings(), force);
+    }
 }

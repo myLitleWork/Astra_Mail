@@ -2,6 +2,7 @@
 #include "ThunderbirdSettings.h"
 #include "menu/StartupProfileLoader.h"
 #include "IdleBackground.h"
+#include "Configs/Confg/ConfigBootstrap.h"
 
 #include <string>
 
@@ -32,10 +33,9 @@ void runStartup()
     if (!astra_mail::pinMenu())
         goto BOOT;
 
-    CONNECTION_CHECK:
-    // 5. Проверка доступности IMAP и SMTP
-    if (!astra_mail::checkServers())
-        goto PIN_CHECK;
+    // 5. Проверка подключения — не блокируем вход, только сообщение
+    if (!astra_mail::checkServersSilent())
+        std::cout << "[Старт] Нет соединения с серверами. Проверку можно выполнить в меню Система.\n";
 
     MAIN_MENU:
     ; // runMainMenu();
@@ -51,6 +51,8 @@ int main()
 {
     using namespace astra_mail;
     setlocale(LC_ALL, "");
+
+    config::ensureIdleSettings(false);
 
     runStartup();
 
