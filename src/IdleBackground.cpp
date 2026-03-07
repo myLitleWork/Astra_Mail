@@ -47,6 +47,16 @@ namespace astra_mail
         lastActivity_ = std::chrono::steady_clock::now();
     }
 
+    void IdleBackground::enterBusy()
+    {
+        busyCount_.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void IdleBackground::leaveBusy()
+    {
+        busyCount_.fetch_sub(1, std::memory_order_relaxed);
+    }
+
     void IdleBackground::threadLoop()
     {
         while (!stop_)
@@ -64,6 +74,9 @@ namespace astra_mail
             auto now = std::chrono::steady_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastActivity_).count();
             if (static_cast<uint32_t>(elapsed) < idleSec)
+                continue;
+
+            if (busyCount_.load(std::memory_order_relaxed) != 0)
                 continue;
 
             runActions();

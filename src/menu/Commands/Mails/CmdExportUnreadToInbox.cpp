@@ -1,4 +1,5 @@
 #include "CmdExportUnreadToInbox.h"
+#include "IdleBackground.h"
 #include "CmdExportUnreadToFolders.h"
 #include "AstraMailPaths.h"
 #include "ThunderbirdSettings.h"
@@ -13,6 +14,7 @@ namespace astra_mail
 {
     CommandResult CmdExportUnreadToInbox::execute()
     {
+        IdleBackground::BusyGuard busy;
         auto& tb = ThunderbirdSettings::instance();
         if (!tb.active().valid())
         {

@@ -21,6 +21,20 @@ namespace astra_mail
         void stop();
         void resetTimer();
 
+        /** Пока хотя бы один guard активен, фоновый поток не запускает runActions(). */
+        void enterBusy();
+        void leaveBusy();
+
+        /** RAII: enterBusy в конструкторе, leaveBusy в деструкторе. */
+        class BusyGuard
+        {
+        public:
+            BusyGuard() { instance().enterBusy(); }
+            ~BusyGuard() { instance().leaveBusy(); }
+            BusyGuard(const BusyGuard&) = delete;
+            BusyGuard& operator=(const BusyGuard&) = delete;
+        };
+
         IdleBackground(const IdleBackground&) = delete;
         IdleBackground& operator=(const IdleBackground&) = delete;
 
@@ -40,6 +54,7 @@ namespace astra_mail
         std::chrono::steady_clock::time_point lastActivity_;
 
         std::atomic<bool> stop_{false};
+        std::atomic<uint32_t> busyCount_{0};
         std::thread thread_;
     };
 }

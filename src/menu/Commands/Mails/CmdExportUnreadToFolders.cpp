@@ -1,4 +1,5 @@
 #include "CmdExportUnreadToFolders.h"
+#include "IdleBackground.h"
 #include "Utils/ImapClient.h"
 #include "Utils/EmlParser.h"
 #include "Utils/Base64.h"
@@ -602,6 +603,7 @@ namespace astra_mail {
 
     CommandResult CmdExportUnreadToFolders::execute()
     {
+        IdleBackground::BusyGuard busy;
         bool ok = runExport(host_, port_, user_, pass_, folders_, outDir_, strategy_, &std::cout);
         my::pause();
         return CommandResult::ExitMenu;

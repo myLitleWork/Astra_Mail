@@ -1,4 +1,5 @@
 #include "CmdSendMailsFromOutbox.h"
+#include "IdleBackground.h"
 #include "MailFolderScanner.h"
 #include "MailFolderReport.h"
 #include "MailSendPipeline.h"
@@ -85,6 +86,7 @@ namespace astra_mail
 
     CommandResult CmdSendMailsFromOutbox::execute()
     {
+        IdleBackground::BusyGuard busy;
         bool ok = runSendFromOutbox(&std::cout);
         if (!ok)
             std::cout << "[Ошибка] Отправка не выполнена. Проверьте аккаунт и соединение с сервером.\n";
