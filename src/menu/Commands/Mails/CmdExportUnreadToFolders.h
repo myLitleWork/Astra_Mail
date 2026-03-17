@@ -50,6 +50,11 @@ namespace astra_mail {
                              ExportStrategy strategy,
                              std::ostream* log);
 
+        /** Офлайн-режим: переносит письма из локального inbox в outDir (обычно на флешку), без IMAP. */
+        static bool runExportFromLocalInbox(const std::string& outDir,
+                                            ExportStrategy strategy,
+                                            std::ostream* log);
+
     private:
 
         std::string host_;

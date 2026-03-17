@@ -131,11 +131,16 @@ namespace astra_mail
 
     void IdleBackground::runActions()
     {
-        if (!checkServersSilent())
-            return;
-
         size_t inboxBefore = countInboxLetters();
         size_t outboxBefore = countOutboxLetters();
+
+        if (!checkServersSilent())
+        {
+            showBackgroundMenu(inboxBefore, outboxBefore,
+                               "Нет соединения с серверами. Ожидание сети для экспорта/отправки...");
+            return;
+        }
+
         showBackgroundMenu(inboxBefore, outboxBefore, "Экспорт в inbox и отправка из outbox...");
 
         auto& tb = ThunderbirdSettings::instance();

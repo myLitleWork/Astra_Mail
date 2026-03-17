@@ -61,6 +61,15 @@ static string execCmd(const string& cmd)
 
 string FlashDriveScanner::getMountPoint(const string& part)
 {
+    // Важно: findmnt -S может не сработать, если источник смонтирован как /dev/disk/by-uuid/...
+    // lsblk показывает mountpoint независимо от того, каким путём указан SOURCE.
+    {
+        string cmd = "lsblk -no MOUNTPOINT " + part + " 2>/dev/null";
+        string mp = execCmd(cmd);
+        if (!mp.empty())
+            return mp;
+    }
+
     string cmd = "findmnt -rn -S " + part + " -o TARGET 2>/dev/null";
     return execCmd(cmd);
 }

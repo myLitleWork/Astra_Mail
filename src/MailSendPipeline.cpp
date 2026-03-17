@@ -103,8 +103,10 @@ namespace astra_mail
         std::string err;
         if (!imap.imapAppendSentFromFile(mimeFile, err))
         {
-            log = "IMAP APPEND error: " + err;
-            return false;
+            // SMTP уже успешно отправил письмо. APPEND в Sent — дополнительная операция,
+            // поэтому не считаем её фатальной (иначе письмо уйдёт, но мы его "не удалим" локально).
+            log = "OK: SMTP sent, but IMAP APPEND failed: " + err;
+            return true;
         }
 
         if (verbose)
@@ -190,8 +192,8 @@ namespace astra_mail
         std::string err;
         if (!imap.imapAppendSentFromFile(mimeFile, err))
         {
-            log = "IMAP APPEND error: " + err;
-            return false;
+            log = "OK: SMTP sent, but IMAP APPEND failed: " + err;
+            return true;
         }
 
         if (verbose)

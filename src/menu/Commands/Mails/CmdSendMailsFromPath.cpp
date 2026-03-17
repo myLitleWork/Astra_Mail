@@ -251,6 +251,7 @@ namespace astra_mail
         {
             std::cout << "\n[SMTP] session open failed: " << err << "\n";
             my::pause();
+            return CommandResult::ExitMenu;
         }
 
         for (auto& mail : localResult.mails)

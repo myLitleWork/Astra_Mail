@@ -25,6 +25,7 @@
 #include "menu/Commands/Server/CmdApplyThunderbirdAccount.h"
 #include "menu/Commands/Server/CmdCheckServers.h"
 #include "src/menu/Commands/Mails/CmdExportUnreadToFolders.h"
+#include "src/menu/Commands/Mails/CmdExportLocalInboxToFlash.h"
 #include "menu/Commands/Configs/CmdEditConfig.h"
 #include "Configs/Confg/ConfigPaths.h"
 #include "Configs/Confg/ConfigBootstrap.h"
@@ -171,7 +172,7 @@ namespace astra_mail::menu
 
     std::unique_ptr<Menu> createMainMenu()
     {
-        auto menu = std::make_unique<Menu>("Основное меню Astra_Mail_v3.1", true);
+        auto menu = std::make_unique<Menu>("Основное меню Astra_Mail_v3.3", true);
 
         menu->add(
                 std::make_unique<CmdOpenMenu>(
@@ -329,6 +330,24 @@ namespace astra_mail::menu
                             folders,
                             err))
                     {
+                        menu->add(std::make_unique<CmdExportLocalInboxToFlash>(
+                                d.mountPoint,
+                                ExportStrategy{ ExportMode::BySubject, false }
+                        ));
+
+                        menu->add(std::make_unique<CmdExportLocalInboxToFlash>(
+                                d.mountPoint,
+                                ExportStrategy{ ExportMode::ByExtension, true }
+                        ));
+
+                        menu->add(std::make_unique<CmdInfo>(
+                                "Нет соединения с почтовым сервером",
+                                "Работаем офлайн: перенести можно только письма, уже сохранённые в локальном inbox.\n"
+                                "Для загрузки новых писем подключите сеть."
+                        ));
+
+                        if(d.mounted)
+                            menu->add(std::make_unique<CmdUmountFlash>(d));
 
                         break;
                     }

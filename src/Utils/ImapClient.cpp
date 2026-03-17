@@ -1,10 +1,14 @@
 // ImapClient.cpp
 #include "ImapClient.h"
+#include "ThunderbirdSettings.h"
 
 // POSIX / sockets
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/select.h>
+#include <cerrno>
 
 
 // STL
@@ -34,6 +38,80 @@ static bool sendAll(int s, const void* data, size_t len)
         p   += n;
         len -= n;
     }
+    return true;
+}
+
+static bool tcpConnectQuick(const std::string& host, int port, int timeoutMs, std::string& err)
+{
+    err.clear();
+
+    addrinfo hints{}, *res = nullptr;
+    hints.ai_socktype = SOCK_STREAM;
+
+    if (::getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res) != 0)
+    {
+        err = "DNS resolve failed";
+        return false;
+    }
+
+    int sock = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (sock < 0)
+    {
+        ::freeaddrinfo(res);
+        err = "socket() failed";
+        return false;
+    }
+
+    // non-blocking connect with select timeout
+    int flags = ::fcntl(sock, F_GETFL, 0);
+    if (flags >= 0)
+        ::fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
+    int rc = ::connect(sock, res->ai_addr, res->ai_addrlen);
+    if (rc == 0)
+    {
+        ::close(sock);
+        ::freeaddrinfo(res);
+        return true;
+    }
+
+    if (errno != EINPROGRESS)
+    {
+        ::close(sock);
+        ::freeaddrinfo(res);
+        err = "connect() failed";
+        return false;
+    }
+
+    fd_set wfds;
+    FD_ZERO(&wfds);
+    FD_SET(sock, &wfds);
+
+    timeval tv{};
+    tv.tv_sec  = timeoutMs / 1000;
+    tv.tv_usec = (timeoutMs % 1000) * 1000;
+
+    rc = ::select(sock + 1, nullptr, &wfds, nullptr, &tv);
+    if (rc <= 0)
+    {
+        ::close(sock);
+        ::freeaddrinfo(res);
+        err = (rc == 0) ? "connect timeout" : "select() failed";
+        return false;
+    }
+
+    int so_error = 0;
+    socklen_t len = sizeof(so_error);
+    if (::getsockopt(sock, SOL_SOCKET, SO_ERROR, &so_error, &len) != 0 || so_error != 0)
+    {
+        ::close(sock);
+        ::freeaddrinfo(res);
+        err = "connect() failed";
+        return false;
+    }
+
+    ::close(sock);
+    ::freeaddrinfo(res);
     return true;
 }
 
@@ -276,10 +354,37 @@ bool ImapClient::imapAppendSentFromFile(const std::string& mimeFile, std::string
 
 bool ImapClient::imapAppendSent(const std::string& rawMime, std::string& err)
 {
-    const char* host = "dvkr.net";
-    int port = 143;
-    const char* user = "vogcentrcvo";
-    const char* pass = "12345678";
+    // Берём реальные параметры из активной конфигурации Thunderbird,
+    // а не из хардкода (иначе "Sent" будет ломать отправку).
+    auto& tb = ThunderbirdSettings::instance();
+    if (!tb.active().valid() || !tb.hasMailPassword())
+    {
+        err = "Thunderbird account/password not set";
+        return false;
+    }
+
+    const auto& a = tb.active();
+    const auto& imapCfg = tb.imapServers().at(a.imapServerId);
+
+    const std::string& hostS = imapCfg.host;
+    int port = imapCfg.port;
+    const std::string& userS = imapCfg.user;
+    const std::string& passS = tb.mailPassword();
+
+    // Если сети нет/IMAP недоступен — не тратим время на протокол APPEND.
+    // SMTP уже мог успешно отправить письмо; APPEND в Sent — дополнительная операция.
+    {
+        std::string pingErr;
+        if (!tcpConnectQuick(hostS, port, 300, pingErr))
+        {
+            err = "IMAP unreachable: " + pingErr;
+            return false;
+        }
+    }
+
+    const char* host = hostS.c_str();
+    const char* user = userS.c_str();
+    const char* pass = passS.c_str();
 
     auto log = [this](const std::string& s)
     {

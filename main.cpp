@@ -3,6 +3,7 @@
 #include "menu/StartupProfileLoader.h"
 #include "IdleBackground.h"
 #include "Configs/Confg/ConfigBootstrap.h"
+#include "Utils/Utils.h"
 
 #include <string>
 
@@ -35,7 +36,10 @@ void runStartup()
 
     // 5. Проверка подключения — не блокируем вход, только сообщение
     if (!astra_mail::checkServersSilent())
+    {
         std::cout << "[Старт] Нет соединения с серверами. Проверку можно выполнить в меню Система.\n";
+        astra_mail::my::pause();
+    }
 
     MAIN_MENU:
     ; // runMainMenu();
