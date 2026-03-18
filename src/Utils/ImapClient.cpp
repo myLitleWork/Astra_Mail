@@ -375,7 +375,7 @@ bool ImapClient::imapAppendSent(const std::string& rawMime, std::string& err)
     // SMTP уже мог успешно отправить письмо; APPEND в Sent — дополнительная операция.
     {
         std::string pingErr;
-        if (!tcpConnectQuick(hostS, port, 300, pingErr))
+        if (!tcpConnectQuick(hostS, port, 3000, pingErr))
         {
             err = "IMAP unreachable: " + pingErr;
             return false;
