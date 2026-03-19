@@ -1,5 +1,5 @@
 #include "Menu.h"
-#include "IdleBackground.h"
+#include "core/idle/IdleBackground.h"
 #include <thread>
 #include <chrono>
 #include <utility>

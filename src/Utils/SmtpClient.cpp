@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <cstdio>
 #include <utility>
+#include <vector>
 
 
 
@@ -138,6 +139,16 @@ bool SmtpClient::sendMailFromFile(
         const std::string& rcpt,
         std::string& error)
 {
+    std::vector<std::string> rcpts;
+    rcpts.push_back(rcpt);
+    return sendMailFromFile(mimeFile, rcpts, error);
+}
+
+bool SmtpClient::sendMailFromFile(
+        const std::string& mimeFile,
+        const std::vector<std::string>& rcpts,
+        std::string& error)
+{
     int s = socketConnect(error);
     if (s < 0)
         return false;
@@ -154,13 +165,27 @@ bool SmtpClient::sendMailFromFile(
     sendLine(s, base64(pass_));
     recvResponse(s, reply);
 
-    // MAIL FROM / RCPT TO берём ИЗ MIME
-    // (серверу этого достаточно, Thunderbird делает так же)
+    if (rcpts.empty())
+    {
+        error = "No recipients provided";
+        sendLine(s, "QUIT");
+        close(s);
+        return false;
+    }
+
     sendLine(s, "MAIL FROM:<" + user_ + ">");
     recvResponse(s, reply);
 
-    sendLine(s, "RCPT TO:<" + rcpt + ">");
-    recvResponse(s, reply);
+    for (const auto& rcpt : rcpts)
+    {
+        if (!sendLine(s, "RCPT TO:<" + rcpt + ">") || !recvResponse(s, reply))
+        {
+            error = "SMTP RCPT TO failed for: " + rcpt;
+            sendLine(s, "QUIT");
+            close(s);
+            return false;
+        }
+    }
 
 
     sendLine(s, "DATA");
@@ -199,14 +224,35 @@ bool SmtpClient::sendMailFromFile(Session& ses,
                                   const std::string& rcpt,
                                   std::string& error)
 {
+    std::vector<std::string> rcpts;
+    rcpts.push_back(rcpt);
+    return sendMailFromFile(ses, mimeFile, rcpts, error);
+}
+
+bool SmtpClient::sendMailFromFile(Session& ses,
+                                  const std::string& mimeFile,
+                                  const std::vector<std::string>& rcpts,
+                                  std::string& error)
+{
     int s = ses.sock;
     std::string reply;
+    if (rcpts.empty())
+    {
+        error = "No recipients provided";
+        return false;
+    }
 
     sendLine(s, "MAIL FROM:<" + user_ + ">");
     recvResponse(s, reply);
 
-    sendLine(s, "RCPT TO:<" + rcpt + ">");
-    recvResponse(s, reply);
+    for (const auto& rcpt : rcpts)
+    {
+        if (!sendLine(s, "RCPT TO:<" + rcpt + ">") || !recvResponse(s, reply))
+        {
+            error = "SMTP RCPT TO failed for: " + rcpt;
+            return false;
+        }
+    }
 
     sendLine(s, "DATA");
     recvResponse(s, reply);

@@ -1,10 +1,10 @@
 #include "CmdExportUnreadToFolders.h"
-#include "IdleBackground.h"
+#include "core/idle/IdleBackground.h"
 #include "Utils/ImapClient.h"
 #include "Utils/EmlParser.h"
 #include "Utils/Base64.h"
 #include "Resolver/Resolvers/SubjectFolderResolver.h"
-#include "AstraMailPaths.h"
+#include "core/paths/AstraMailPaths.h"
 #include "UtilsFS/FsCompat.h"
 #include <iostream>
 #include <sys/stat.h>
@@ -391,25 +391,6 @@ namespace astra_mail {
         ImapSession ses;
         std::string err;
 
-        if (!imapOpen(ses, host, port, err))
-        {
-            if (log) *log << "[Экспорт] IMAP подключение: " << err << "\n";
-            return false;
-        }
-        if (!imapLogin(ses, user, pass, err))
-        {
-            if (log) *log << "[Экспорт] IMAP логин: " << err << "\n";
-            imapClose(ses);
-            return false;
-        }
-
-        if (folders.empty())
-        {
-            if (log) *log << "[Экспорт] Список IMAP-папок пуст. Проверьте imap_folders.conf\n";
-            imapClose(ses);
-            return false;
-        }
-
         // При экспорте на флешку используем inbox: по темам — копируем 1:1; по типам вложений — читаем папки и группируем по правилам.
         std::map<std::string, std::pair<std::string, fs::path>> inboxUidMap;
         fs::path outPath(outDir);
@@ -495,9 +476,8 @@ namespace astra_mail {
 
         if (!imapOk)
         {
-            // офлайн-режим: если экспорт на флешку и локальный inbox непустой — переносим его без сети
+            if (log) *log << "[Экспорт] Сервер недоступен. Переносим из локального inbox (офлайн).\n";
             exportLocalInboxOnly();
-            // дальше удаление из inbox выполнится общим кодом ниже
         }
         else
         {

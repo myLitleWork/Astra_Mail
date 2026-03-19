@@ -4,7 +4,7 @@
 #include <vector>
 #include "UtilsFS/FsCompat.h"
 #include <cstdint>
-#include "src/Resolver/Resolvers/AttachmentGroupsResolver.h"
+#include "Resolver/Resolvers/AttachmentGroupsResolver.h"
 
 
 namespace astra_mail

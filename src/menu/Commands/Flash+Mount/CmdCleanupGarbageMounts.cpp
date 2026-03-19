@@ -1,6 +1,6 @@
 #include "CmdCleanupGarbageMounts.h"
-#include "src/Utils/FlashDriveScanner.h"
-#include "src/Utils/Utils.h"
+#include "Utils/FlashDriveScanner.h"
+#include "Utils/Utils.h"
 
 #include <iostream>
 

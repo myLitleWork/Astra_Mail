@@ -1,5 +1,5 @@
 #include "MimeFileBuilder.h"
-#include "src/Utils/SmtpClient.h"
+#include "Utils/SmtpClient.h"
 #include <fstream>
 #include <ctime>
 #include <iostream>

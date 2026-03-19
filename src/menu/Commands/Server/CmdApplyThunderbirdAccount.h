@@ -1,7 +1,7 @@
 #pragma once
 
 #include "menu/Command.h"
-#include "ThunderbirdSettings.h"
+#include "core/thunderbird/ThunderbirdSettings.h"
 
 namespace astra_mail
 {

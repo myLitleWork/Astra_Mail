@@ -1,7 +1,7 @@
 #include "CmdApplyThunderbirdAccount.h"
 #include "Utils/Utils.h"
-#include "ContactsManager.h"
-#include "ActiveProfileStorage.h"
+#include "core/contacts/ContactsManager.h"
+#include "core/profile/ActiveProfileStorage.h"
 
 #include <iostream>
 #include <sstream>

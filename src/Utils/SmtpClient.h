@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 
 class SmtpClient
 {
@@ -22,9 +23,16 @@ public:
                           const std::string& mimeFile,
                           const std::string& rcpt,
                           std::string& error);
+    bool sendMailFromFile(Session& ses,
+                          const std::string& mimeFile,
+                          const std::vector<std::string>& rcpts,
+                          std::string& error);
 
     bool sendMailFromFile(const std::string& mimeFile,
                           const std::string& rcpt,
+                          std::string& error);
+    bool sendMailFromFile(const std::string& mimeFile,
+                          const std::vector<std::string>& rcpts,
                           std::string& error);
 
     static std::string base64(const std::string& in);

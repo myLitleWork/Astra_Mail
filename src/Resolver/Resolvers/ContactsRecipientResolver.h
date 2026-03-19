@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Resolver/RecipientResolver.h"
-#include "ContactsManager.h"
+#include "core/contacts/ContactsManager.h"
 
 
 #if __has_include(<optional>)

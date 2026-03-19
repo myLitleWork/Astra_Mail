@@ -3,10 +3,10 @@
 
 #include "menu/Commands/Server/CmdScanThunderbirdProfiles.h"
 #include "menu/Menu.h"
-#include "src/menu/Commands/StartUpMenu/CmdEnterPin.h"
-#include "src/menu/Commands/StartUpMenu/CmdResetPin.h"
+#include "menu/Commands/StartUpMenu/CmdEnterPin.h"
+#include "menu/Commands/StartUpMenu/CmdResetPin.h"
 #include "SecretManager.h"
-#include "ThunderbirdSettings.h"
+#include "core/thunderbird/ThunderbirdSettings.h"
 
 namespace astra_mail
 {

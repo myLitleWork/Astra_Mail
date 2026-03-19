@@ -1,15 +1,15 @@
 #include "CmdSendMailsFromPath.h"
-#include "MailFolderScanner.h"
-#include "MailFolderReport.h"
-#include "MailSendPipeline.h"
-#include "src/Utils/Utils.h"
-#include "ThunderbirdSettings.h"
+#include "core/mail/MailFolderScanner.h"
+#include "core/mail/MailFolderReport.h"
+#include "core/mail/MailSendPipeline.h"
+#include "Utils/Utils.h"
+#include "core/thunderbird/ThunderbirdSettings.h"
 #include "Resolver/Resolvers/ContactsRecipientResolver.h"
 
 #include <iostream>
 
 #include "UtilsFS/FsCompat.h"
-#include "AstraMailPaths.h"
+#include "core/paths/AstraMailPaths.h"
 
 #include <stdexcept>
 #include <fstream>
@@ -249,7 +249,9 @@ namespace astra_mail
 
         if (!smtp.openSession(ses, err))
         {
-            std::cout << "\n[SMTP] session open failed: " << err << "\n";
+            std::cout << "\n[SMTP] Не удалось подключиться к серверу: " << err << "\n"
+                      << "Письма сохранены в локальную папку исходящих.\n"
+                      << "Они будут отправлены автоматически при восстановлении соединения.\n";
             my::pause();
             return CommandResult::ExitMenu;
         }

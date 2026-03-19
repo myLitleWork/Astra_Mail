@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <iostream>
+#include <unordered_set>
 #include "ThunderbirdContactsImporter.h"
 #include "SQLiteConnectionManager.h"
 
@@ -91,20 +92,14 @@ namespace astra_mail {
 
 
 
-        std::cout << "[TB-IMPORT] Выполнение SQL-запроса\n";
+        std::cout << "[TB-IMPORT] Выполнение SQL-запроса (контакты)\n";
 
         auto rows = db->select(sql);
 
-        std::cout << "[TB-IMPORT] Получено строк: "
+        std::cout << "[TB-IMPORT] Получено контактов: "
                   << rows.size() << "\n";
 
-        if (rows.empty())
-        {
-            std::cout << "[TB-IMPORT][WARN] Контакты не найдены\n";
-            return false;
-        }
-
-        bool added = false;
+        bool addedContacts = false;
         size_t duplicates = 0;
 
         for (size_t i = 0; i < rows.size(); ++i)
@@ -134,7 +129,7 @@ namespace astra_mail {
             }
 
             contacts_[c.key] = std::move(c);
-            added = true;
+            addedContacts = true;
 
             std::cout << "[TB-IMPORT][OK] Контакт #" << (i + 1)
                       << ": " << row.at("email") << "\n";
@@ -144,7 +139,85 @@ namespace astra_mail {
                   << "Добавлено: " << rows.size()
                   << ", дубликатов: " << duplicates << "\n";
 
-        return added;
+        // --- mailing lists (циркулярные записи) ---
+        bool addedLists = false;
+        size_t listRows = 0;
+        try
+        {
+            // В разных версиях Thunderbird у списка может быть name и/или nickName.
+            // Мы сохраняем адреса под обоими ключами (если есть), чтобы папка могла называться псевдонимом.
+            const std::string sqlLists =
+                    "SELECT l.name AS listName, "
+                    "       l.nickName AS listNick, "
+                    "       p_email.value AS email "
+                    "FROM lists l "
+                    // В TB поле list в list_cards хранит uid списка (UUID-строку), а не numeric id.
+                    "JOIN list_cards lc ON lc.list = l.uid "
+                    "JOIN properties p_email "
+                    "  ON p_email.card = lc.card AND p_email.name = 'PrimaryEmail' "
+                    "WHERE (l.name IS NOT NULL AND l.name <> '' "
+                    "       OR l.nickName IS NOT NULL AND l.nickName <> '') "
+                    "  AND p_email.value IS NOT NULL AND p_email.value <> ''";
+
+            std::cout << "[TB-IMPORT] Выполнение SQL-запроса (списки рассылки)\n";
+            auto lrows = db->select(sqlLists);
+            listRows = lrows.size();
+
+            for (const auto& row : lrows)
+            {
+                auto itEmail = row.find("email");
+                if (itEmail == row.end())
+                    continue;
+
+                std::string email = itEmail->second;
+                if (email.empty())
+                    continue;
+
+                auto addKey = [&](const char* col)
+                {
+                    auto it = row.find(col);
+                    if (it == row.end()) return;
+                    std::string key = normalizeKey(it->second);
+                    if (key.empty()) return;
+                    mailingLists_[key].push_back(email);
+                    addedLists = true;
+                };
+
+                addKey("listName");
+                addKey("listNick");
+            }
+
+            // дедупликация email-ов в каждом списке
+            for (auto& kv : mailingLists_)
+            {
+                auto& v = kv.second;
+                std::unordered_set<std::string> seen;
+                std::vector<std::string> out;
+                out.reserve(v.size());
+                for (auto& e : v)
+                {
+                    if (seen.insert(e).second)
+                        out.push_back(std::move(e));
+                }
+                v.swap(out);
+            }
+        }
+        catch (...)
+        {
+            // В некоторых версиях Thunderbird таблиц lists/list_cards или колонок может не быть.
+        }
+
+        if (addedLists)
+            std::cout << "[TB-IMPORT] Списков рассылки: " << mailingLists_.size()
+                      << ", строк: " << listRows << "\n";
+
+        if (!addedContacts && !addedLists)
+        {
+            std::cout << "[TB-IMPORT][WARN] Контакты/списки не найдены\n";
+            return false;
+        }
+
+        return true;
     }
 
 
@@ -161,6 +234,12 @@ namespace astra_mail {
     const std::unordered_map<std::string, astra_mail::Contact> &
     ThunderbirdContactsImporter::contacts() const {
         return contacts_;
+    }
+
+    const std::unordered_map<std::string, std::vector<std::string>>&
+    ThunderbirdContactsImporter::mailingLists() const
+    {
+        return mailingLists_;
     }
 
 

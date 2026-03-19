@@ -1,17 +1,17 @@
 #include "IdleBackground.h"
 #include "IdleSettings.h"
 #include "menu/StartupProfileLoader.h"
-#include "ThunderbirdSettings.h"
-#include "AstraMailPaths.h"
+#include "core/thunderbird/ThunderbirdSettings.h"
+#include "core/paths/AstraMailPaths.h"
 #include "Utils/ImapClient.h"
 #include "Utils/ImapUtf7.h"
 #include "Utils/ImapFolderFilter.h"
 #include "Configs/Confg/ConfigPaths.h"
 #include "menu/Commands/Mails/CmdExportUnreadToFolders.h"
 #include "menu/Commands/Mails/CmdSendMailsFromOutbox.h"
-#include "MailFolderScanner.h"
+#include "core/mail/MailFolderScanner.h"
 #include "Resolver/Resolvers/ContactsRecipientResolver.h"
-#include "ContactsManager.h"
+#include "core/contacts/ContactsManager.h"
 #include "UtilsFS/FsCompat.h"
 
 #include <thread>
@@ -134,15 +134,6 @@ namespace astra_mail
         size_t inboxBefore = countInboxLetters();
         size_t outboxBefore = countOutboxLetters();
 
-        if (!checkServersSilent())
-        {
-            showBackgroundMenu(inboxBefore, outboxBefore,
-                               "Нет соединения с серверами. Ожидание сети для экспорта/отправки...");
-            return;
-        }
-
-        showBackgroundMenu(inboxBefore, outboxBefore, "Экспорт в inbox и отправка из outbox...");
-
         auto& tb = ThunderbirdSettings::instance();
         if (!tb.active().valid() || !tb.hasMailPassword())
             return;
@@ -151,46 +142,63 @@ namespace astra_mail
         const auto& imap = tb.imapServers().at(active.imapServerId);
         const std::string& password = tb.mailPassword();
 
-        std::vector<std::string> rawFolders;
-        std::string err;
-        if (!ImapClient::listMailboxes(imap.host, imap.port, imap.user, password, rawFolders, err))
-            return;
-
-        std::vector<ImapFolder> imapFolders;
-        for (const std::string& raw : rawFolders)
+        // --- Экспорт входящих (IMAP) — пробуем, но не блокируем отправку ---
+        bool imapOk = false;
         {
-            std::string display = imap::decodeUtf7(raw);
-            if (display.empty())
-                continue;
-            imapFolders.emplace_back(raw, display);
+            std::vector<std::string> rawFolders;
+            std::string err;
+            if (ImapClient::listMailboxes(imap.host, imap.port, imap.user, password, rawFolders, err))
+            {
+                imapOk = true;
+                std::vector<ImapFolder> imapFolders;
+                for (const std::string& raw : rawFolders)
+                {
+                    std::string display = imap::decodeUtf7(raw);
+                    if (display.empty())
+                        continue;
+                    imapFolders.emplace_back(raw, display);
+                }
+
+                imap::FolderFilter filter(config::imapFoldersConfig());
+                filter.load();
+                for (auto it = imapFolders.begin(); it != imapFolders.end(); )
+                {
+                    if (!filter.shouldShow(it->displayName))
+                        it = imapFolders.erase(it);
+                    else
+                        ++it;
+                }
+
+                if (!imapFolders.empty())
+                {
+                    showBackgroundMenu(inboxBefore, outboxBefore, "Экспорт входящих...");
+                    std::string inboxPath = getInboxRoot().string();
+                    CmdExportUnreadToFolders::runExport(
+                            imap.host, imap.port, imap.user, password,
+                            imapFolders, inboxPath,
+                            ExportStrategy{ ExportMode::BySubject, false },
+                            nullptr
+                    );
+                }
+            }
         }
 
-        imap::FolderFilter filter(config::imapFoldersConfig());
-        filter.load();
-        for (auto it = imapFolders.begin(); it != imapFolders.end(); )
+        // --- Отправка исходящих (SMTP) — пробуем ВСЕГДА, даже если IMAP лежит ---
+        size_t outboxNow = countOutboxLetters();
+        if (outboxNow > 0)
         {
-            if (!filter.shouldShow(it->displayName))
-                it = imapFolders.erase(it);
-            else
-                ++it;
+            showBackgroundMenu(countInboxLetters(), outboxNow,
+                               imapOk ? "Отправка из outbox..." : "IMAP недоступен. Пробуем отправить outbox...");
+            CmdSendMailsFromOutbox::runSendFromOutbox(nullptr);
         }
-
-        if (!imapFolders.empty())
-        {
-            std::string inboxPath = getInboxRoot().string();
-            CmdExportUnreadToFolders::runExport(
-                    imap.host, imap.port, imap.user, password,
-                    imapFolders, inboxPath,
-                    ExportStrategy{ ExportMode::BySubject, false },
-                    nullptr
-            );
-            showBackgroundMenu(countInboxLetters(), countOutboxLetters(), "Экспорт завершён. Отправка из outbox...");
-        }
-
-        CmdSendMailsFromOutbox::runSendFromOutbox(nullptr);
 
         size_t inboxAfter = countInboxLetters();
         size_t outboxAfter = countOutboxLetters();
-        showBackgroundMenu(inboxAfter, outboxAfter, "Готово. Нажмите Enter для возврата в меню.");
+
+        std::string finalStatus = "Готово.";
+        if (!imapOk)
+            finalStatus += " (IMAP был недоступен — входящие не проверены)";
+
+        showBackgroundMenu(inboxAfter, outboxAfter, finalStatus);
     }
 }

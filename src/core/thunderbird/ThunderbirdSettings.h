@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "src/menu/Commands/Server/CmdScanThunderbirdProfiles.h"
+#include "menu/Commands/Server/CmdScanThunderbirdProfiles.h"
 
 using PrefMap = std::unordered_map<std::string, std::string>;
 

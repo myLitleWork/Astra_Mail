@@ -1,7 +1,7 @@
 #include "menu/MenuCreator.h"
-#include "ThunderbirdSettings.h"
+#include "core/thunderbird/ThunderbirdSettings.h"
 #include "menu/StartupProfileLoader.h"
-#include "IdleBackground.h"
+#include "core/idle/IdleBackground.h"
 #include "Configs/Confg/ConfigBootstrap.h"
 #include "Utils/Utils.h"
 
@@ -37,18 +37,13 @@ void runStartup()
     // 5. Проверка подключения — не блокируем вход, только сообщение
     if (!astra_mail::checkServersSilent())
     {
-        std::cout << "[Старт] Нет соединения с серверами. Проверку можно выполнить в меню Система.\n";
+        std::cout << "[Старт] Нет соединения с серверами. Проверку можно выполнить в меню Система 2.\n";
         astra_mail::my::pause();
     }
 
     MAIN_MENU:
     ; // runMainMenu();
 }
-
-
-
-
-
 
 
 int main()

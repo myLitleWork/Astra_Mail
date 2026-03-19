@@ -1,6 +1,6 @@
 #include "CmdExportLocalInboxToFlash.h"
 #include "CmdExportUnreadToFolders.h"
-#include "IdleBackground.h"
+#include "core/idle/IdleBackground.h"
 #include "Utils/Utils.h"
 #include <iostream>
 

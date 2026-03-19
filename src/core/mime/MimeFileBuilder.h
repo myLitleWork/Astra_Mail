@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include "src/Utils/EmailMessage.h"
+#include "Utils/EmailMessage.h"
 
 class MimeFileBuilder
 {

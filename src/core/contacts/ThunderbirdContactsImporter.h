@@ -3,6 +3,7 @@
 #include "UtilsFS/FsCompat.h"
 
 #include <unordered_map>
+#include <vector>
 #include <string>
 
 namespace astra_mail
@@ -23,6 +24,7 @@ namespace astra_mail
         bool loadOneBook(const fs::path& dbPath);
 
         const std::unordered_map<std::string, Contact>& contacts() const;
+        const std::unordered_map<std::string, std::vector<std::string>>& mailingLists() const;
 
         bool hasDuplicateKeys() const;
 
@@ -30,6 +32,7 @@ namespace astra_mail
 
 
         std::unordered_map<std::string, Contact> contacts_;
+        std::unordered_map<std::string, std::vector<std::string>> mailingLists_; // normalized list name -> emails
         bool hasDuplicates_ = false;
     };
 }

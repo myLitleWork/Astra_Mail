@@ -1,6 +1,6 @@
 #pragma once
 #include "menu/Command.h"
-#include "src/Utils/FlashDriveScanner.h"
+#include "Utils/FlashDriveScanner.h"
 #include <string>
 
 namespace astra_mail

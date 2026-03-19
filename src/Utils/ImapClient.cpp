@@ -1,6 +1,6 @@
 // ImapClient.cpp
 #include "ImapClient.h"
-#include "ThunderbirdSettings.h"
+#include "core/thunderbird/ThunderbirdSettings.h"
 
 // POSIX / sockets
 #include <sys/socket.h>
@@ -463,10 +463,17 @@ bool ImapClient::imapAppendSent(const std::string& rawMime, std::string& err)
 
     sendCmd("a3 APPEND Sent (\\Seen) {" + std::to_string(sz) + "}");
 
-    std::string r = recvUntil("+");
+    // Сервер должен ответить continuation: "+ ..."
+    // Если вместо этого вернёт "a3 NO/BAD ..." — покажем реальную строку.
+    std::string r = recvUntil("\n");
     if (r.find('+') == std::string::npos)
     {
-        err = "Server did not accept literal";
+        // Попробуем дочитать ещё немного, чтобы захватить tagged NO/BAD, если он пришёл чуть позже.
+        r += recvUntil("\n");
+        if (r.find("a3 NO") != std::string::npos || r.find("a3 BAD") != std::string::npos)
+            err = "APPEND rejected: " + r;
+        else
+            err = "Server did not accept literal: " + r;
         close(sock);
         return false;
     }

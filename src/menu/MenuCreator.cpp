@@ -3,29 +3,29 @@
 //
 
 #include "MenuCreator.h"
-#include "src/Utils/FlashDriveScanner.h"
-#include "src/menu/Commands/Mails/CmdViewFlashMails.h"
-#include "src/menu/Commands/Mails/CmdSendMailsFromPath.h"
-#include "src/menu/Commands/Mails/CmdViewOutboxMails.h"
-#include "src/menu/Commands/Mails/CmdSendMailsFromOutbox.h"
-#include "src/menu/Commands/Mails/CmdViewInboxMails.h"
-#include "src/menu/Commands/Mails/CmdExportUnreadToInbox.h"
-#include "src/menu/Commands/Mails/CmdCleanupOutbox.h"
-#include "src/menu/Commands/Mails/CmdCleanupInbox.h"
-#include "src/menu/Commands/Menu/CmdBack.h"
-#include "src/menu/Commands/Flash+Mount/CmdMountFlash.h"
-#include "src/menu/Commands/Menu/CmdOpenMenu.h"
-#include "ThunderbirdSettings.h"
-#include "src/menu/Commands/Menu/CmdInfo.h"
-#include "src/menu/Commands/Flash+Mount/CmdUmountFlash.h"
-#include "src/menu/Commands/Flash+Mount/CmdCleanupGarbageMounts.h"
-#include "src/menu/Commands/Flash+Mount/CmdEnableUsbMount.h"
+#include "Utils/FlashDriveScanner.h"
+#include "menu/Commands/Mails/CmdViewFlashMails.h"
+#include "menu/Commands/Mails/CmdSendMailsFromPath.h"
+#include "menu/Commands/Mails/CmdViewOutboxMails.h"
+#include "menu/Commands/Mails/CmdSendMailsFromOutbox.h"
+#include "menu/Commands/Mails/CmdViewInboxMails.h"
+#include "menu/Commands/Mails/CmdExportUnreadToInbox.h"
+#include "menu/Commands/Mails/CmdCleanupOutbox.h"
+#include "menu/Commands/Mails/CmdCleanupInbox.h"
+#include "menu/Commands/Menu/CmdBack.h"
+#include "menu/Commands/Flash+Mount/CmdMountFlash.h"
+#include "menu/Commands/Menu/CmdOpenMenu.h"
+#include "core/thunderbird/ThunderbirdSettings.h"
+#include "menu/Commands/Menu/CmdInfo.h"
+#include "menu/Commands/Flash+Mount/CmdUmountFlash.h"
+#include "menu/Commands/Flash+Mount/CmdCleanupGarbageMounts.h"
+#include "menu/Commands/Flash+Mount/CmdEnableUsbMount.h"
 #include "menu/Commands/Server/CmdScanThunderbirdProfiles.h"
 #include "Utils/Utils.h"
 #include "menu/Commands/Server/CmdApplyThunderbirdAccount.h"
 #include "menu/Commands/Server/CmdCheckServers.h"
-#include "src/menu/Commands/Mails/CmdExportUnreadToFolders.h"
-#include "src/menu/Commands/Mails/CmdExportLocalInboxToFlash.h"
+#include "menu/Commands/Mails/CmdExportUnreadToFolders.h"
+
 #include "menu/Commands/Configs/CmdEditConfig.h"
 #include "Configs/Confg/ConfigPaths.h"
 #include "Configs/Confg/ConfigBootstrap.h"
@@ -82,14 +82,37 @@ namespace astra_mail::menu
             ExportMode mode,
             bool dedupByHash,
             const ImapConfig& imap,
-            const std::vector<ImapFolder>& imapFolders,
             const std::string& mountPoint,
             const std::string& password
     )
     {
         auto menu = std::make_unique<Menu>(title);
 
-        // ВСЕ ПАПКИ
+        std::vector<ImapFolder> imapFolders;
+        {
+            std::vector<std::string> rawFolders;
+            std::string err;
+            if (ImapClient::listMailboxes(imap.host, imap.port, imap.user, password, rawFolders, err))
+            {
+                for (const std::string& raw : rawFolders)
+                {
+                    std::string display = astra_mail::imap::decodeUtf7(raw);
+                    if (!display.empty())
+                        imapFolders.emplace_back(raw, display);
+                }
+
+                astra_mail::imap::FolderFilter filter(config::imapFoldersConfig());
+                filter.load();
+                for (auto it = imapFolders.begin(); it != imapFolders.end(); )
+                {
+                    if (!filter.shouldShow(it->displayName))
+                        it = imapFolders.erase(it);
+                    else
+                        ++it;
+                }
+            }
+        }
+
         menu->add(std::make_unique<CmdExportUnreadToFolders>(
                 imap.host,
                 imap.port,
@@ -100,7 +123,6 @@ namespace astra_mail::menu
                 ExportStrategy{ mode, dedupByHash }
         ));
 
-        // ПО ПАПКАМ ОТДЕЛЬНО
         for (const auto& folder : imapFolders)
         {
             menu->add(std::make_unique<CmdExportUnreadToFolders>(
@@ -113,8 +135,6 @@ namespace astra_mail::menu
                     ExportStrategy{ mode, dedupByHash }
             ));
         }
-
-
 
         menu->add(std::make_unique<CmdBack>());
         return menu;
@@ -317,107 +337,36 @@ namespace astra_mail::menu
                     const auto& active = ts.active();
                     const auto& imap   = ts.imapServers().at(active.imapServerId);
 
-
-                    // ── получаем список папок ─────────────────────────────────────
-                    std::vector<std::string> folders;
-                    std::string err;
-
-                    if (!ImapClient::listMailboxes(
-                            imap.host,
-                            imap.port,
-                            imap.user,
-                            ts.mailPassword(),
-                            folders,
-                            err))
-                    {
-                        menu->add(std::make_unique<CmdExportLocalInboxToFlash>(
-                                d.mountPoint,
-                                ExportStrategy{ ExportMode::BySubject, false }
-                        ));
-
-                        menu->add(std::make_unique<CmdExportLocalInboxToFlash>(
-                                d.mountPoint,
-                                ExportStrategy{ ExportMode::ByExtension, true }
-                        ));
-
-                        menu->add(std::make_unique<CmdInfo>(
-                                "Нет соединения с почтовым сервером",
-                                "Работаем офлайн: перенести можно только письма, уже сохранённые в локальном inbox.\n"
-                                "Для загрузки новых писем подключите сеть."
-                        ));
-
-                        if(d.mounted)
-                            menu->add(std::make_unique<CmdUmountFlash>(d));
-
-                        break;
-                    }
-
-                    std::vector<ImapFolder> imapFolders;
-
-                    for (const std::string& raw : folders)
-                    {
-
-                        std::string display = astra_mail::imap::decodeUtf7(raw);
-
-                        if (display.empty())
-                            continue;
-
-                        imapFolders.emplace_back(raw, display);
-                    }
-
-
-                    astra_mail::imap::FolderFilter filter(
-                            config::imapFoldersConfig()
-                    );
-
-                    filter.load();
-
-                    for (auto it = imapFolders.begin(); it != imapFolders.end(); )
-                    {
-                        if (!filter.shouldShow(it->displayName))
-                            it = imapFolders.erase(it);
-                        else
-                            ++it;
-                    }
-
-
-                    // ── ВСЕ ПАПКИ: по темам ────────────────────────────────────────
                     menu->add(std::make_unique<CmdOpenMenu>(
-                            [=]() {
+                            [=, &ts]() {
                                 return buildExportMenu(
                                         "Экспорт по темам",
                                         ExportMode::BySubject,
                                         false,
                                         imap,
-                                        imapFolders,
                                         d.mountPoint,
                                         ts.mailPassword()
                                 );
                             },
-                            "Экспорт по темам"
+                            "Экспорт по темам → " + d.mountPoint
                     ));
 
-
                     menu->add(std::make_unique<CmdOpenMenu>(
-                            [=]() {
+                            [=, &ts]() {
                                 return buildExportMenu(
                                         "Экспорт по типам вложений",
                                         ExportMode::ByExtension,
                                         true,
                                         imap,
-                                        imapFolders,
                                         d.mountPoint,
                                         ts.mailPassword()
                                 );
                             },
-                            "Экспорт по типам вложений"
+                            "Экспорт по типам вложений → " + d.mountPoint
                     ));
 
-
                     if(d.mounted)
-                    {
                         menu->add(std::make_unique<CmdUmountFlash>(d));
-                    }
 
                     break;
                 }

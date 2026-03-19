@@ -1,9 +1,9 @@
 #include "StartupProfileLoader.h"
 
-#include "ThunderbirdSettings.h"
-#include "ActiveProfileStorage.h"
+#include "core/thunderbird/ThunderbirdSettings.h"
+#include "core/profile/ActiveProfileStorage.h"
 #include "menu/MenuCreator.h"
-#include "ContactsManager.h"
+#include "core/contacts/ContactsManager.h"
 #include "Utils/Utils.h"
 #include "UtilsFS/FsCompat.h"
 #include "Utils/ImapClient.h"

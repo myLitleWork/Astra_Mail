@@ -2,9 +2,10 @@
 
 #include <unordered_map>
 #include <string>
-#include "ThunderbirdSettings.h"
-#include "src/menu/Commands/Server/CmdScanThunderbirdProfiles.h"
-#include "ThunderbirdContactsImporter.h"
+#include <vector>
+#include "core/thunderbird/ThunderbirdSettings.h"
+#include "menu/Commands/Server/CmdScanThunderbirdProfiles.h"
+#include "core/contacts/ThunderbirdContactsImporter.h"
 
 namespace astra_mail {
 
@@ -21,6 +22,9 @@ namespace astra_mail {
         // доступ к контактам активного профиля
         const std::unordered_map<std::string, Contact> &contacts() const;
 
+        // списки рассылки (normalized name -> emails)
+        const std::unordered_map<std::string, std::vector<std::string>>& mailingLists() const;
+
         // очистка (при смене профиля / выходе)
         void clear();
 
@@ -32,6 +36,7 @@ namespace astra_mail {
 
         std::string activeProfileId_;
         std::unordered_map<std::string, Contact> contacts_;
+        std::unordered_map<std::string, std::vector<std::string>> mailingLists_;
 
     };
 }

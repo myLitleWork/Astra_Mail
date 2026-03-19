@@ -1,5 +1,8 @@
 # игнорируем каталоги сборки (CLion, CMake)
 cmake-build-*/
+build/
+build-*/
+build-cursor-check*/
 lib/
 minizip/
 other/

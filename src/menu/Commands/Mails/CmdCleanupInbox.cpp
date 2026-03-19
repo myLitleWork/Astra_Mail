@@ -1,5 +1,5 @@
 #include "CmdCleanupInbox.h"
-#include "AstraMailPaths.h"
+#include "core/paths/AstraMailPaths.h"
 #include "Utils/Confirm.h"
 #include "Utils/Utils.h"
 #include "UtilsFS/FsCompat.h"

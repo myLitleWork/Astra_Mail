@@ -3,7 +3,7 @@
 //
 
 #include "CmdOpenMenu.h"
-#include "IdleBackground.h"
+#include "core/idle/IdleBackground.h"
 
 astra_mail::CommandResult astra_mail::CmdOpenMenu::execute() {
 

@@ -1,8 +1,8 @@
 #include "CmdViewInboxMails.h"
-#include "MailFolderScanner.h"
-#include "AstraMailPaths.h"
+#include "core/mail/MailFolderScanner.h"
+#include "core/paths/AstraMailPaths.h"
 #include "UtilsFS/FsCompat.h"
-#include "src/Utils/Utils.h"
+#include "Utils/Utils.h"
 #include <iostream>
 #include <map>
 #include <string>

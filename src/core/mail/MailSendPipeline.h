@@ -1,8 +1,8 @@
 #pragma once
-#include "MailFolderModels.h"
-#include "src/Utils/SmtpClient.h"
-#include "src/Utils/ImapClient.h"
-#include "MimeFileBuilder.h"
+#include "core/mail/MailFolderModels.h"
+#include "Utils/SmtpClient.h"
+#include "Utils/ImapClient.h"
+#include "core/mime/MimeFileBuilder.h"
 #include <string>
 
 namespace astra_mail

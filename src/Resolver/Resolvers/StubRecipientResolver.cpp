@@ -20,7 +20,7 @@ namespace astra_mail
             folderName == "RECYCLER" ||
             folderName == "Recycler")
         {
-            return std::experimental::nullopt;
+            return optional<std::string>{};
         }
 
         if (looksLikeEmail(folderName))

@@ -1,6 +1,6 @@
 #include "StartupServerCheck.h"
 
-#include "ThunderbirdSettings.h"
+#include "core/thunderbird/ThunderbirdSettings.h"
 #include "Utils/SmtpClient.h"
 
 #include <iostream>

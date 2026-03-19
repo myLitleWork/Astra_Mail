@@ -2,17 +2,50 @@
 #include "Resolver/Resolvers/OutgoingSubjectResolver.h"
 #include "Configs/Confg/ConfigPaths.h"
 #include "Configs/Confg/ConfigBootstrap.h"
-#include "src/Utils/EmailMessage.h"
-#include "src/Utils/ImapClient.h"
-#include "MimeFileBuilder.h"
+#include "Utils/EmailMessage.h"
+#include "Utils/ImapClient.h"
+#include "core/mime/MimeFileBuilder.h"
 #include <iostream>
 #include "UtilsFS/FsCompat.h"
+#include <cctype>
 
 
 
 
 namespace astra_mail
 {
+    static std::string trimAscii(std::string s)
+    {
+        auto is_ws = [](unsigned char c){ return std::isspace(c); };
+        while (!s.empty() && is_ws((unsigned char)s.front())) s.erase(s.begin());
+        while (!s.empty() && is_ws((unsigned char)s.back())) s.pop_back();
+        return s;
+    }
+
+    static std::vector<std::string> splitRecipients(const std::string& s)
+    {
+        std::vector<std::string> out;
+        std::string cur;
+        for (char ch : s)
+        {
+            if (ch == ',' || ch == ';')
+            {
+                cur = trimAscii(cur);
+                if (!cur.empty())
+                    out.push_back(cur);
+                cur.clear();
+            }
+            else
+            {
+                cur.push_back(ch);
+            }
+        }
+        cur = trimAscii(cur);
+        if (!cur.empty())
+            out.push_back(cur);
+        return out;
+    }
+
     MailSendPipeline::MailSendPipeline(
             const std::string& smtpHost, int smtpPort,
             const std::string& imapHost, int imapPort,
@@ -31,6 +64,13 @@ namespace astra_mail
                                 std::string& log,
                                 bool verbose /* = false */)
     {
+        const auto recipients = splitRecipients(info.recipient);
+        if (recipients.empty())
+        {
+            log = "No recipients provided";
+            return false;
+        }
+
         int spin = 0;
         const char spinner[] = "|/-\\";
 
@@ -91,7 +131,7 @@ namespace astra_mail
         SmtpClient smtp(smtpHost_, smtpPort_);
         smtp.setCredentials(user_, pass_);
 
-        if (!smtp.sendMailFromFile(mimeFile, msg.to, log))
+        if (!smtp.sendMailFromFile(mimeFile, recipients, log))
         {
             log = "SMTP error: " + log;
             return false;
@@ -112,7 +152,7 @@ namespace astra_mail
         if (verbose)
             std::cout << "\r[PIPE] ✓ done                         \n";
 
-        log = "OK: sent to " + msg.to;
+        log = "OK: sent to " + std::to_string(recipients.size()) + " recipient(s)";
         return true;
     }
 
@@ -122,6 +162,13 @@ namespace astra_mail
                                 SmtpClient::Session& ses,
                                 bool verbose /* = false */)
     {
+        const auto recipients = splitRecipients(info.recipient);
+        if (recipients.empty())
+        {
+            log = "No recipients provided";
+            return false;
+        }
+
         int spin = 0;
         const char spinner[] = "|/-\\";
 
@@ -179,7 +226,7 @@ namespace astra_mail
         // 2) SMTP (ИЗМЕНЕНО: без создания клиента и без логина)
         status("SMTP send");
 
-        if (!smtp.sendMailFromFile(ses, mimeFile, msg.to, log))
+        if (!smtp.sendMailFromFile(ses, mimeFile, recipients, log))
         {
             log = "SMTP error: " + log;
             return false;
@@ -201,7 +248,7 @@ namespace astra_mail
         if (verbose)
             std::cout << "\r[PIPE] ✓ done                         \n";
 
-        log = "OK: sent to " + msg.to;
+        log = "OK: sent to " + std::to_string(recipients.size()) + " recipient(s)";
         return true;
     }
 

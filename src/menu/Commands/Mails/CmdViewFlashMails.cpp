@@ -1,9 +1,9 @@
 #include "CmdViewFlashMails.h"
-#include "MailFolderScanner.h"
-#include "MailFolderReport.h"
-#include "src/Utils/Utils.h"
+#include "core/mail/MailFolderScanner.h"
+#include "core/mail/MailFolderReport.h"
+#include "Utils/Utils.h"
 #include "Resolver/Resolvers/ContactsRecipientResolver.h"
-#include "src/ContactsManager.h"
+#include "core/contacts/ContactsManager.h"
 
 #include <iostream>
 

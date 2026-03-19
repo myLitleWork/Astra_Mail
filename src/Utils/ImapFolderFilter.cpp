@@ -2,7 +2,7 @@
 #include <fstream>
 #include <unordered_set>
 #include "UtilsFS/FsCompat.h"
-#include "src/Configs/Confg/ConfigDefaults.h"
+#include "Configs/Confg/ConfigDefaults.h"
 
 namespace astra_mail::imap {
 
