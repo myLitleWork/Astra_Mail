@@ -95,6 +95,13 @@ std::string ThunderbirdSettings::defaultAccount() const
 
 bool ThunderbirdSettings::load(const std::string& prefsPath)
 {
+    accounts_.clear();
+    imap_.clear();
+    smtp_.clear();
+    identities_.clear();
+    active_ = {};
+    defaultAccount_.clear();
+
     PrefMap p;
     if (!parsePrefsFile(prefsPath, p))
         return false;
@@ -235,6 +242,53 @@ bool ThunderbirdSettings::applyDefaultAccount()
 const ActiveMailConfig& ThunderbirdSettings::active() const
 {
     return active_;
+}
+
+void ThunderbirdSettings::loadFromLocalCache(const astra_mail::TbProfile& profile, const astra_mail::LocalMailSettings& s)
+{
+    accounts_.clear();
+    imap_.clear();
+    smtp_.clear();
+    identities_.clear();
+    active_ = {};
+
+    currentProfile_ = profile;
+
+    AccountConfig acc;
+    acc.accountId = s.accountId.empty() ? "local_account_1" : s.accountId;
+    acc.serverId = "local_imap_1";
+    acc.identities.push_back(s.identityId.empty() ? "local_identity_1" : s.identityId);
+
+    ImapConfig im;
+    im.serverId = acc.serverId;
+    im.host = s.imapHost;
+    im.port = s.imapPort;
+    im.ssl = s.imapSsl;
+    im.user = s.userName;
+
+    SmtpConfig sm;
+    sm.serverId = "local_smtp_1";
+    sm.host = s.smtpHost;
+    sm.port = s.smtpPort;
+    sm.ssl = s.smtpSsl;
+    sm.user = s.userName;
+
+    IdentityConfig id;
+    id.identityId = acc.identities.front();
+    id.email = s.email;
+    id.fullName = s.fullName;
+    id.smtpServerId = sm.serverId;
+
+    accounts_[acc.accountId] = acc;
+    imap_[im.serverId] = im;
+    smtp_[sm.serverId] = sm;
+    identities_[id.identityId] = id;
+    defaultAccount_ = acc.accountId;
+
+    active_.accountId = acc.accountId;
+    active_.identityId = id.identityId;
+    active_.imapServerId = im.serverId;
+    active_.smtpServerId = sm.serverId;
 }
 
 

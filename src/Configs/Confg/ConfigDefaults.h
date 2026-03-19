@@ -17,4 +17,8 @@ namespace astra_mail::config::defaults
     const char* tbNoMailPassword();
     const char* noFlashDrivesFound();
     std::string imapFoldersConfig();
+    const char* localMailSettings();
+    const char* localContacts();
+    const char* localMailSettingsHelp();
+    const char* localContactsHelp();
 }

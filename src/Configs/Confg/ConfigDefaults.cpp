@@ -338,6 +338,149 @@ namespace astra_mail::config::defaults
                 "После монтирования вернитесь в это меню и повторите действие.\n";
     }
 
+    const char* localMailSettings()
+    {
+        return
+                "# Настройки почтового аккаунта (AstraMail)\n"
+                "# Формат: key=value\n"
+                "#\n"
+                "# profile_id    — идентификатор профиля (папка Thunderbird)\n"
+                "# profile_path  — полный путь к профилю\n"
+                "# account_id    — идентификатор аккаунта\n"
+                "# identity_id   — идентификатор identity\n"
+                "#\n"
+                "# email         — адрес ящика, например: user@mail.ru\n"
+                "# full_name     — имя отправителя (опционально)\n"
+                "# user_name     — логин для IMAP и SMTP\n"
+                "#\n"
+                "# imap_host     — сервер входящей почты, например: imap.mail.ru\n"
+                "# imap_port     — порт IMAP (обычно 993 для SSL, 143 без SSL)\n"
+                "# imap_ssl      — 1 = SSL включен, 0 = выключен\n"
+                "#\n"
+                "# smtp_host     — сервер исходящей почты, например: smtp.mail.ru\n"
+                "# smtp_port     — порт SMTP (обычно 465 для SSL, 25 или 587 без SSL)\n"
+                "# smtp_ssl      — 1 = SSL включен, 0 = выключен\n"
+                "#\n"
+                "# ВАЖНО: замените значения на реальные данные вашего ящика.\n"
+                "#   Значения CHANGE_ME, imap.example.com, smtp.example.com\n"
+                "#   считаются невалидными — программа их не примет.\n"
+                "#\n\n"
+                "profile_id=\n"
+                "profile_path=\n"
+                "account_id=local_account_1\n"
+                "identity_id=local_identity_1\n"
+                "\n"
+                "email=CHANGE_ME@example.com\n"
+                "full_name=CHANGE_ME\n"
+                "user_name=CHANGE_ME\n"
+                "\n"
+                "imap_host=imap.example.com\n"
+                "imap_port=993\n"
+                "imap_ssl=1\n"
+                "\n"
+                "smtp_host=smtp.example.com\n"
+                "smtp_port=465\n"
+                "smtp_ssl=1\n";
+    }
+
+    const char* localContacts()
+    {
+        return
+                "# Адресная книга (AstraMail)\n"
+                "#\n"
+                "# ─────────────────────────────────────────────────────────────\n"
+                "# Формат контактов\n"
+                "# ─────────────────────────────────────────────────────────────\n"
+                "#\n"
+                "#   C|key|email|displayName|nickName\n"
+                "#\n"
+                "#   key         — уникальный ключ (строчные, пробелы → _)\n"
+                "#   email       — адрес электронной почты\n"
+                "#   displayName — отображаемое имя\n"
+                "#   nickName    — псевдоним (используется для сопоставления с папкой)\n"
+                "#\n"
+                "# ВАЖНО: nickName используется как имя папки при отправке писем!\n"
+                "#   Программа ищет папку с именем = nickName контакта.\n"
+                "#   Если nickName пустой — сопоставление по папке не сработает.\n"
+                "#   Поэтому nickName ОБЯЗАТЕЛЕН для каждого контакта.\n"
+                "#\n"
+                "# ─────────────────────────────────────────────────────────────\n"
+                "# Примеры контактов\n"
+                "# ─────────────────────────────────────────────────────────────\n"
+                "#\n"
+                "#   C|ivanov|ivanov@mail.ru|Иванов Иван|ivanov\n"
+                "#   C|petrov|petrov@yandex.ru|Петров Пётр|petrov\n"
+                "#   C|info|info@company.ru|ООО Компания|info\n"
+                "#\n"
+                "# Как это работает:\n"
+                "#   Папка на флешке называется \"ivanov\" → программа находит\n"
+                "#   контакт с nickName=ivanov → отправляет на ivanov@mail.ru\n"
+                "#\n"
+                "# ─────────────────────────────────────────────────────────────\n"
+                "# Списки рассылки (циркулярные записи)\n"
+                "# ─────────────────────────────────────────────────────────────\n"
+                "#\n"
+                "#   L|имя_списка|email1,email2,email3\n"
+                "#\n"
+                "#   Имя списка также используется как имя папки.\n"
+                "#   Папка \"отдел_кадров\" → рассылка всем в списке.\n"
+                "#\n"
+                "# Примеры:\n"
+                "#   L|отдел_кадров|ivanov@mail.ru,petrov@yandex.ru\n"
+                "#   L|руководство|boss@company.ru,deputy@company.ru\n"
+                "#\n";
+    }
+
+    const char* localMailSettingsHelp()
+    {
+        return
+                "Настройки почтового аккаунта хранятся в файле\n"
+                "  ~/.astramail/profile_cache/mail_settings.conf\n"
+                "\n"
+                "Формат: key=value (по одному на строку)\n"
+                "Строки, начинающиеся с #, игнорируются.\n"
+                "\n"
+                "Обязательные поля:\n"
+                "  email       — адрес ящика\n"
+                "  user_name   — логин для серверов\n"
+                "  imap_host   — сервер входящей почты\n"
+                "  smtp_host   — сервер исходящей почты\n"
+                "\n"
+                "Необязательные:\n"
+                "  full_name, profile_id, profile_path, account_id, identity_id\n"
+                "\n"
+                "Порты и SSL:\n"
+                "  imap_port=993, imap_ssl=1  — типичные для SSL\n"
+                "  smtp_port=465, smtp_ssl=1  — типичные для SSL\n";
+    }
+
+    const char* localContactsHelp()
+    {
+        return
+                "Адресная книга хранится в файле\n"
+                "  ~/.astramail/profile_cache/contacts.conf\n"
+                "\n"
+                "Формат контактов:\n"
+                "  C|key|email|displayName|nickName\n"
+                "\n"
+                "ВАЖНО: nickName ОБЯЗАТЕЛЕН.\n"
+                "  Программа сопоставляет имя папки на флешке с nickName контакта.\n"
+                "  Если папка называется \"ivanov\", программа ищет контакт\n"
+                "  с nickName=ivanov и отправляет письмо на его email.\n"
+                "  Без nickName сопоставление не работает!\n"
+                "\n"
+                "Пример:\n"
+                "  C|ivanov|ivanov@mail.ru|Иванов Иван|ivanov\n"
+                "\n"
+                "Формат списков рассылки:\n"
+                "  L|имя_списка|email1,email2,email3\n"
+                "\n"
+                "  Имя списка тоже используется как имя папки.\n"
+                "\n"
+                "Пример:\n"
+                "  L|отдел_кадров|ivanov@mail.ru,petrov@yandex.ru\n";
+    }
+
     std::string imapFoldersConfig()
     {
         return

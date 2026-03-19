@@ -34,6 +34,9 @@ set(MENU_CPP
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/Server/CmdCheckServers.cpp
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/Server/CmdScanThunderbirdProfiles.cpp
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/Server/CmdShowImapSettings.cpp
+        ${CMAKE_SOURCE_DIR}/src/menu/Commands/Server/CmdShowLocalContacts.cpp
+        ${CMAKE_SOURCE_DIR}/src/menu/Commands/Server/CmdShowLocalProfileSettings.cpp
+        ${CMAKE_SOURCE_DIR}/src/menu/Commands/Server/CmdImportCsvContacts.cpp
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/Server/CmdShowSmtpSettings.cpp
 
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/StartUpMenu/CmdEnterPin.cpp

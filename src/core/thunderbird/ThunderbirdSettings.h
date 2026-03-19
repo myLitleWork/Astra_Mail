@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 #include "menu/Commands/Server/CmdScanThunderbirdProfiles.h"
+#include "core/profile/LocalProfileCache.h"
 
 using PrefMap = std::unordered_map<std::string, std::string>;
 
@@ -95,6 +96,7 @@ public:
 
     bool applyDefaultAccount();
     const ActiveMailConfig& active() const;
+    void loadFromLocalCache(const astra_mail::TbProfile& profile, const astra_mail::LocalMailSettings& s);
 
     std::string defaultAccount() const;
 

@@ -52,6 +52,8 @@ int main()
     setlocale(LC_ALL, "");
 
     config::ensureIdleSettings(false);
+    config::ensureLocalMailSettings(false);
+    config::ensureLocalContacts(false);
 
     runStartup();
 

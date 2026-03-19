@@ -5,6 +5,7 @@ set(CORE_CPP
 
         ${CMAKE_SOURCE_DIR}/src/core/contacts/ContactsManager.cpp
         ${CMAKE_SOURCE_DIR}/src/core/contacts/ThunderbirdContactsImporter.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/contacts/CsvContactsImporter.cpp
 
         ${CMAKE_SOURCE_DIR}/src/core/thunderbird/ThunderbirdSettings.cpp
 

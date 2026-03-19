@@ -1,8 +1,16 @@
 #include "ConfigPaths.h"
 #include "UtilsFS/FsUtils.h"
+#include <cstdlib>
 
 namespace astra_mail::config
 {
+    static fs::path profileCacheDir()
+    {
+        const char* home = std::getenv("HOME");
+        fs::path base = (home && *home) ? fs::path(home) : fs::current_path();
+        return base / ".astramail" / "profile_cache";
+    }
+
 
     fs::path subjectRules()
     {
@@ -25,5 +33,15 @@ namespace astra_mail::config
     fs::path idleSettings()
     {
         return fsu::getExecutableDir() / fs::path{"idle_settings.conf"};
+    }
+
+    fs::path localMailSettings()
+    {
+        return profileCacheDir() / "mail_settings.conf";
+    }
+
+    fs::path localContacts()
+    {
+        return profileCacheDir() / "contacts.conf";
     }
 }

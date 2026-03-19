@@ -61,4 +61,12 @@ namespace astra_mail
 
     bool saveLocalProfileMeta(const LocalProfileMeta& meta);
     bool loadLocalProfileMeta(LocalProfileMeta& out);
+
+    bool validateLocalMailSettings(const LocalMailSettings& s, std::string& reason);
+    void clearLocalProfileCache();
+
+    // Создать файлы локального профиля с шаблонами, если их ещё нет.
+    // Это нужно для “редактирования через внешний редактор”.
+    bool ensureLocalMailSettingsFile();
+    bool ensureLocalContactsFile();
 }

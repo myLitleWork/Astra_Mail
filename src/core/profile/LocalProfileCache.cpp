@@ -99,16 +99,44 @@ namespace astra_mail
         if (!out.is_open())
             return false;
 
+        out << "# Настройки почтового аккаунта (AstraMail)\n"
+            << "# Формат: key=value\n"
+            << "#\n"
+            << "# profile_id    — идентификатор профиля (папка Thunderbird)\n"
+            << "# profile_path  — полный путь к профилю\n"
+            << "# account_id    — идентификатор аккаунта\n"
+            << "# identity_id   — идентификатор identity\n"
+            << "#\n"
+            << "# email         — адрес ящика, например: user@mail.ru\n"
+            << "# full_name     — имя отправителя (опционально)\n"
+            << "# user_name     — логин для IMAP и SMTP\n"
+            << "#\n"
+            << "# imap_host     — сервер входящей почты, например: imap.mail.ru\n"
+            << "# imap_port     — порт IMAP (обычно 993 для SSL, 143 без SSL)\n"
+            << "# imap_ssl      — 1 = SSL включен, 0 = выключен\n"
+            << "#\n"
+            << "# smtp_host     — сервер исходящей почты, например: smtp.mail.ru\n"
+            << "# smtp_port     — порт SMTP (обычно 465 для SSL, 25 или 587 без SSL)\n"
+            << "# smtp_ssl      — 1 = SSL включен, 0 = выключен\n"
+            << "#\n"
+            << "# ВАЖНО: замените значения на реальные данные вашего ящика.\n"
+            << "#   Значения CHANGE_ME, imap.example.com, smtp.example.com\n"
+            << "#   считаются невалидными — программа их не примет.\n"
+            << "#\n\n";
+
         out << "profile_id=" << settings.profileId << "\n";
         out << "profile_path=" << settings.profilePath << "\n";
         out << "account_id=" << settings.accountId << "\n";
         out << "identity_id=" << settings.identityId << "\n";
+        out << "\n";
         out << "email=" << settings.email << "\n";
         out << "full_name=" << settings.fullName << "\n";
         out << "user_name=" << settings.userName << "\n";
+        out << "\n";
         out << "imap_host=" << settings.imapHost << "\n";
         out << "imap_port=" << settings.imapPort << "\n";
         out << "imap_ssl=" << (settings.imapSsl ? "1" : "0") << "\n";
+        out << "\n";
         out << "smtp_host=" << settings.smtpHost << "\n";
         out << "smtp_port=" << settings.smtpPort << "\n";
         out << "smtp_ssl=" << (settings.smtpSsl ? "1" : "0") << "\n";
@@ -127,6 +155,9 @@ namespace astra_mail
         std::string line;
         while (std::getline(in, line))
         {
+            if (line.empty() || line[0] == '#')
+                continue;
+
             const auto pos = line.find('=');
             if (pos == std::string::npos)
                 continue;
@@ -163,14 +194,28 @@ namespace astra_mail
         if (!out.is_open())
             return false;
 
-        // C|key|email|display|nick
+        out << "# Адресная книга (AstraMail)\n"
+            << "#\n"
+            << "# Контакты:  C|key|email|displayName|nickName\n"
+            << "#\n"
+            << "# ВАЖНО: nickName ОБЯЗАТЕЛЕН — он используется как имя папки при отправке.\n"
+            << "#   Папка \"ivanov\" → контакт с nickName=ivanov → письмо на ivanov@mail.ru\n"
+            << "#\n"
+            << "# Пример:  C|ivanov|ivanov@mail.ru|Иванов Иван|ivanov\n"
+            << "#\n"
+            << "# Списки:  L|имя_списка|email1,email2,email3\n"
+            << "# Пример:  L|отдел_кадров|ivanov@mail.ru,petrov@yandex.ru\n"
+            << "#\n\n";
+
         for (const auto& kv : contacts)
         {
             const Contact& c = kv.second;
             out << "C|" << c.key << "|" << c.email << "|" << c.displayName << "|" << c.nickName << "\n";
         }
 
-        // L|list_name|email1,email2,email3
+        if (!mailingLists.empty())
+            out << "\n";
+
         for (const auto& kv : mailingLists)
         {
             out << "L|" << kv.first << "|";
@@ -200,6 +245,9 @@ namespace astra_mail
         std::string line;
         while (std::getline(in, line))
         {
+            if (line.empty() || line[0] == '#')
+                continue;
+
             if (line.size() < 3 || line[1] != '|')
                 continue;
 
@@ -278,5 +326,157 @@ namespace astra_mail
             out.importedAtUtc = nowUtcString();
 
         return true;
+    }
+
+    bool validateLocalMailSettings(const LocalMailSettings& s, std::string& reason)
+    {
+        auto isPlaceholderToken = [](const std::string& v)
+        {
+            return v.find("CHANGE_ME") != std::string::npos;
+        };
+
+        if (s.email.empty())
+        {
+            reason = "email is empty";
+            return false;
+        }
+        if (isPlaceholderToken(s.email))
+        {
+            reason = "email still contains placeholder (CHANGE_ME)";
+            return false;
+        }
+        if (s.imapHost.empty())
+        {
+            reason = "imap_host is empty";
+            return false;
+        }
+        if (isPlaceholderToken(s.imapHost) || s.imapHost == "imap.example.com")
+        {
+            reason = "imap_host still looks like placeholder";
+            return false;
+        }
+        if (s.smtpHost.empty())
+        {
+            reason = "smtp_host is empty";
+            return false;
+        }
+        if (isPlaceholderToken(s.smtpHost) || s.smtpHost == "smtp.example.com")
+        {
+            reason = "smtp_host still looks like placeholder";
+            return false;
+        }
+        if (s.userName.empty())
+        {
+            reason = "user_name is empty";
+            return false;
+        }
+        if (isPlaceholderToken(s.userName))
+        {
+            reason = "user_name still contains placeholder (CHANGE_ME)";
+            return false;
+        }
+        if (s.imapPort <= 0 || s.imapPort > 65535)
+        {
+            reason = "imap_port out of range";
+            return false;
+        }
+        if (s.smtpPort <= 0 || s.smtpPort > 65535)
+        {
+            reason = "smtp_port out of range";
+            return false;
+        }
+        reason.clear();
+        return true;
+    }
+
+    void clearLocalProfileCache()
+    {
+        std::error_code ec;
+        fs::remove(getLocalMailSettingsPath(), ec);
+        fs::remove(getLocalContactsPath(), ec);
+        fs::remove(getLocalMetaPath(), ec);
+    }
+
+    static bool fileHasContent(const fs::path& path)
+    {
+        if (!fs::exists(path))
+            return false;
+        std::error_code ec;
+        auto sz = fs::file_size(path, ec);
+        return !ec && sz > 10;
+    }
+
+    bool ensureLocalMailSettingsFile()
+    {
+        if (!ensureCacheDir())
+            return false;
+
+        const fs::path path = getLocalMailSettingsPath();
+        if (fileHasContent(path))
+            return true;
+
+        const char* tpl =
+                "# Local mail settings (AstraMail cache)\n"
+                "# Отредактируйте значения, затем перезапустите программу.\n"
+                "# ВАЖНО:\n"
+                "#   - значения с токеном CHANGE_ME нужно заменить\n"
+                "#   - imap.example.com / smtp.example.com нужно заменить\n"
+                "# Иначе кэш будет считаться НЕВАЛИДНЫМ и программа не будет брать его как рабочие настройки.\n"
+                "# Формат: key=value\n"
+                "#\n"
+                "profile_id=\n"
+                "profile_path=\n"
+                "account_id=local_account_1\n"
+                "identity_id=local_identity_1\n"
+                "#\n"
+                "# Идентичность\n"
+                "email=CHANGE_ME@example.com\n"
+                "full_name=CHANGE_ME\n"
+                "user_name=CHANGE_ME\n"
+                "#\n"
+                "# IMAP (входящая почта)\n"
+                "imap_host=imap.example.com\n"
+                "imap_port=993\n"
+                "imap_ssl=1\n"
+                "#\n"
+                "# SMTP (исходящая почта)\n"
+                "smtp_host=smtp.example.com\n"
+                "smtp_port=465\n"
+                "smtp_ssl=1\n";
+
+        std::ofstream out(path.string(), std::ios::trunc);
+        if (!out.is_open())
+            return false;
+
+        out << tpl;
+        return static_cast<bool>(out);
+    }
+
+    bool ensureLocalContactsFile()
+    {
+        if (!ensureCacheDir())
+            return false;
+
+        const fs::path path = getLocalContactsPath();
+        if (fileHasContent(path))
+            return true;
+
+        const char* tpl =
+                "# Local contacts (AstraMail cache)\n"
+                "# Формат строк:\n"
+                "#   C|key|email|displayName|nickName\n"
+                "#   L|list_name|email1,email2,email3\n"
+                "# key обычно формируется как nickName или displayName или email (если nick/display нет).\n"
+                "#\n"
+                "# Примеры (закомментированы, не добавятся автоматически):\n"
+                "# C|example_key|alice@example.com|Alice Example|alice\n"
+                "# L|friends|alice@example.com\n";
+
+        std::ofstream out(path.string(), std::ios::trunc);
+        if (!out.is_open())
+            return false;
+
+        out << tpl;
+        return static_cast<bool>(out);
     }
 }

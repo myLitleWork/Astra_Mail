@@ -67,14 +67,22 @@ namespace astra_mail {
         std::cout << "[TB-IMPORT] Открытие адресной книги: "
                   << dbPath.string() << "\n";
 
-        auto db = SQLiteConnectionManager::instance()
-                .getConnection(dbPath.string(), mySQLite::MOD::READ);
-
-        if (!db)
+        if (!fs::exists(dbPath))
         {
-            std::cout << "[TB-IMPORT][ERROR] Не удалось открыть БД\n";
+            std::cout << "[TB-IMPORT][WARN] Файл не найден: " << dbPath.string() << "\n";
             return false;
         }
+
+        try
+        {
+            auto db = SQLiteConnectionManager::instance()
+                    .getConnection(dbPath.string(), mySQLite::MOD::READ);
+
+            if (!db)
+            {
+                std::cout << "[TB-IMPORT][ERROR] Не удалось открыть БД\n";
+                return false;
+            }
 
 
         const std::string sql =
@@ -92,9 +100,9 @@ namespace astra_mail {
 
 
 
-        std::cout << "[TB-IMPORT] Выполнение SQL-запроса (контакты)\n";
+            std::cout << "[TB-IMPORT] Выполнение SQL-запроса (контакты)\n";
 
-        auto rows = db->select(sql);
+            auto rows = db->select(sql);
 
         std::cout << "[TB-IMPORT] Получено контактов: "
                   << rows.size() << "\n";
@@ -217,7 +225,18 @@ namespace astra_mail {
             return false;
         }
 
-        return true;
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            std::cout << "[TB-IMPORT][ERROR] Ошибка открытия/чтения БД: " << e.what() << "\n";
+            return false;
+        }
+        catch (...)
+        {
+            std::cout << "[TB-IMPORT][ERROR] Неизвестная ошибка при чтении БД\n";
+            return false;
+        }
     }
 
 

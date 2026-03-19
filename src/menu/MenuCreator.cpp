@@ -24,7 +24,13 @@
 #include "Utils/Utils.h"
 #include "menu/Commands/Server/CmdApplyThunderbirdAccount.h"
 #include "menu/Commands/Server/CmdCheckServers.h"
+#include "menu/Commands/Server/CmdShowLocalProfileSettings.h"
+#include "menu/Commands/Server/CmdShowLocalContacts.h"
+#include "menu/Commands/Server/CmdImportCsvContacts.h"
 #include "menu/Commands/Mails/CmdExportUnreadToFolders.h"
+
+#include "Configs/Confg/ConfigPaths.h"
+#include "Configs/Confg/ConfigBootstrap.h"
 
 #include "menu/Commands/Configs/CmdEditConfig.h"
 #include "Configs/Confg/ConfigPaths.h"
@@ -417,6 +423,33 @@ namespace astra_mail::menu
                         "Профили Thunderbird"
                 )
         );
+
+        menu->add(std::make_unique<CmdShowLocalProfileSettings>());
+        menu->add(std::make_unique<CmdShowLocalContacts>());
+
+        menu->add(std::make_unique<CmdEditConfig>(
+                ConfigItem{ "Редактировать настройки профиля", config::localMailSettings() }));
+
+        menu->add(std::make_unique<CmdEditConfig>(
+                ConfigItem{ "Редактировать абонентов", config::localContacts() }));
+
+        menu->add(std::make_unique<CmdResetConfig>(
+                "Пересоздать настройки профиля (по умолчанию)",
+                [](bool force) { config::ensureLocalMailSettings(force); }));
+
+        menu->add(std::make_unique<CmdImportCsvContacts>());
+
+        menu->add(std::make_unique<CmdResetConfig>(
+                "Пересоздать адресную книгу (по умолчанию)",
+                [](bool force) { config::ensureLocalContacts(force); }));
+
+        menu->add(std::make_unique<CmdInfo>(
+                "Справка: настройки профиля",
+                config::defaults::localMailSettingsHelp()));
+
+        menu->add(std::make_unique<CmdInfo>(
+                "Справка: адресная книга",
+                config::defaults::localContactsHelp()));
 
         menu->add(std::make_unique<CmdCheckServers>());
         menu->add(std::make_unique<CmdEnableUsbMount>());

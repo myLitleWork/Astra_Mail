@@ -1,5 +1,6 @@
 #include "CmdEditConfig.h"
 #include "Configs/Editor/EditorLauncher.h"
+#include "core/idle/IdleBackground.h"
 #include <iostream>
 
 namespace astra_mail
@@ -16,10 +17,16 @@ namespace astra_mail
 
     CommandResult CmdEditConfig::execute()
     {
-        std::string err;
+        // Внешний редактор блокирует текущий поток: пока он запущен — запрещаем idle-действия.
+        IdleBackground::BusyGuard busy;
 
-        if (!system::openInEditor(item_.path, err))
+        std::string err;
+        bool ok = system::openInEditor(item_.path, err);
+        if (!ok)
             std::cout << "[ERROR] " << err << "\n";
+
+        // После закрытия редактора сбрасываем таймер активности.
+        IdleBackground::instance().resetTimer();
 
         return CommandResult::Continue;
     }

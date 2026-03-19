@@ -2,6 +2,7 @@
 
 #include "core/thunderbird/ThunderbirdSettings.h"
 #include "core/profile/ActiveProfileStorage.h"
+#include "core/profile/LocalProfileCache.h"
 #include "menu/MenuCreator.h"
 #include "core/contacts/ContactsManager.h"
 #include "Utils/Utils.h"
@@ -39,6 +40,35 @@ namespace astra_mail
 
     bool tryLoadSavedProfile(TbProfile& outProfile)
     {
+        // 0. Приоритет: пробуем загрузить локальный кэш профиля.
+        {
+            LocalMailSettings local{};
+            if (loadLocalMailSettings(local))
+            {
+                std::string reason;
+                if (validateLocalMailSettings(local, reason))
+                {
+                    outProfile = TbProfile{};
+                    outProfile.id = local.profileId.empty() ? "local_profile" : local.profileId;
+                    outProfile.path = local.profilePath;
+                    outProfile.active_account_id = local.accountId;
+
+                    auto& tb = ThunderbirdSettings::instance();
+                    tb.loadFromLocalCache(outProfile, local);
+
+                    std::unordered_map<std::string, Contact> contacts;
+                    std::unordered_map<std::string, std::vector<std::string>> mailingLists;
+                    loadLocalContacts(contacts, mailingLists);
+                    ContactsManager::instance().loadFromCache(outProfile.id, contacts, mailingLists);
+
+                    std::cout << "[STARTUP] Загружены локальные настройки профиля из cache\n";
+                    return true;
+                }
+
+                std::cout << "[STARTUP][WARN] Локальные настройки невалидны: " << reason << "\n";
+            }
+        }
+
         // 1. пробуем прочитать сохранённый профиль
         if (!loadActiveProfile(outProfile))
             return false;

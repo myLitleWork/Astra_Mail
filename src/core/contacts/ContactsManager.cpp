@@ -86,4 +86,14 @@ namespace astra_mail {
         return activeProfileId_;
     }
 
+    void ContactsManager::loadFromCache(
+            const std::string& profileId,
+            const std::unordered_map<std::string, Contact>& contacts,
+            const std::unordered_map<std::string, std::vector<std::string>>& mailingLists)
+    {
+        activeProfileId_ = profileId;
+        contacts_ = contacts;
+        mailingLists_ = mailingLists;
+    }
+
 }
