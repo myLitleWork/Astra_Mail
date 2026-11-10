@@ -1,8 +1,44 @@
 #include "MimeFileBuilder.h"
 #include "Utils/SmtpClient.h"
-#include <fstream>
+#include <ostream>
+#include <streambuf>
+#include <memory>
+#include <cerrno>
+#include <unistd.h>
 #include <ctime>
 #include <iostream>
+
+namespace {
+class FileSink : public std::streambuf {
+public:
+    explicit FileSink(FILE* file) : file_(file) {}
+protected:
+    std::streamsize xsputn(const char* data, std::streamsize size) override {
+        std::streamsize done = 0;
+        while (done < size) {
+            errno = 0;
+            const size_t written = std::fwrite(data + done, 1, static_cast<size_t>(size - done), file_);
+            done += static_cast<std::streamsize>(written);
+            if (written == 0 || std::ferror(file_)) {
+                // After a stdio error the buffered position is not reliable.
+                // Abort construction; the unchanged outbox can retry later.
+                break;
+            }
+        }
+        return done;
+    }
+    int_type overflow(int_type value) override {
+        if (traits_type::eq_int_type(value, traits_type::eof())) return traits_type::not_eof(value);
+        const char c = traits_type::to_char_type(value);
+        return xsputn(&c, 1) == 1 ? value : traits_type::eof();
+    }
+    int sync() override {
+        return std::fflush(file_) == 0 ? 0 : -1;
+    }
+private:
+    FILE* file_;
+};
+}
 
 static std::string rfc2822Date()
 {
@@ -23,16 +59,19 @@ static std::string genMsgId(const std::string& from)
     return std::to_string(std::time(nullptr)) + "." + std::to_string(rand()) + "@" + dom;
 }
 
-bool MimeFileBuilder::buildToFile(const EmailMessage& msg,
-                                  const std::string& outPath,
+bool MimeFileBuilder::buildToStream(const EmailMessage& msg,
+                                  FILE* file,
                                   std::string& err)
 {
-    std::ofstream out(outPath, std::ios::binary);
-    if (!out)
+    err.clear();
+    if (!file || ::fseeko(file, 0, SEEK_SET) != 0 || ::ftruncate(::fileno(file), 0) != 0)
     {
-        err = "Cannot create MIME temp file";
+        err = "Cannot prepare MIME stream";
         return false;
     }
+    std::clearerr(file);
+    FileSink sink(file);
+    std::ostream out(&sink);
 
     const std::string crlf = "\r\n";
     const std::string boundary = "----=_AstraMailBoundary_001";
@@ -52,6 +91,7 @@ bool MimeFileBuilder::buildToFile(const EmailMessage& msg,
     out << "Content-Transfer-Encoding: 7bit" << crlf;
     out << crlf;
     out << msg.body << crlf;
+    if (!out) { err = "Cannot write MIME file"; return false; }
 
     // ---- attachments (RAW, без base64!)
     for (const auto& a : msg.attachments)
@@ -63,26 +103,31 @@ bool MimeFileBuilder::buildToFile(const EmailMessage& msg,
         out << crlf;
 
 
-        FILE* f = fopen(a.path.c_str(), "rb");
+        std::unique_ptr<FILE, decltype(&std::fclose)> f(std::fopen(a.path.c_str(), "rb"), &std::fclose);
         if (!f)
         {
-            out << "[MIME] cannot open attachment: " << a.path << "\n";
-            continue;
+            err = "Cannot open attachment: " + a.path;
+            return false;
         }
 
 
         unsigned char buf[57];
         while (true)
         {
-            size_t r = fread(buf, 1, sizeof(buf), f);
+            size_t r = fread(buf, 1, sizeof(buf), f.get());
             if (r == 0) break;
 
             std::string chunk(reinterpret_cast<char*>(buf), r);
             out << SmtpClient::base64(chunk) << crlf;
+            if (!out) { err = "Cannot write MIME file"; return false; }
         }
-        fclose(f);
+        const bool readOk = !ferror(f.get());
+        if (!readOk) { err = "Cannot read attachment: " + a.path; return false; }
     }
 
     out << "--" << boundary << "--" << crlf;
+    out.flush();
+    if (!out || std::ferror(file)) { err = "Cannot write MIME file"; return false; }
+    if (::fseeko(file, 0, SEEK_SET) != 0) { err = "Cannot rewind MIME file"; return false; }
     return true;
 }

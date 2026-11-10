@@ -8,6 +8,7 @@ namespace astra_mail::config
     void ensureAttachmentGroups(bool force = false);
     void ensureOutgoingSubjectRules(bool force = false);
     void ensureIdleSettings(bool force = false);
+    void ensureNetworkSettings(bool force = false);
     void ensureLocalMailSettings(bool force = false);
     void ensureLocalContacts(bool force = false);
 }

@@ -35,6 +35,11 @@ namespace astra_mail::config
         return fsu::getExecutableDir() / fs::path{"idle_settings.conf"};
     }
 
+    fs::path networkSettings()
+    {
+        return fsu::getExecutableDir() / fs::path{"network_settings.conf"};
+    }
+
     fs::path localMailSettings()
     {
         return profileCacheDir() / "mail_settings.conf";

@@ -25,6 +25,7 @@ set(MENU_CPP
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/Mails/CmdExportUnreadToInbox.cpp
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/Mails/CmdParseEmlFolder.cpp
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/Mails/CmdSendMailsFromOutbox.cpp
+        ${CMAKE_SOURCE_DIR}/src/menu/Commands/Mails/CmdReviewDelivery.cpp
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/Mails/CmdSendMailsFromPath.cpp
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/Mails/CmdViewFlashMails.cpp
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/Mails/CmdViewInboxMails.cpp
@@ -41,6 +42,7 @@ set(MENU_CPP
 
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/StartUpMenu/CmdEnterPin.cpp
         ${CMAKE_SOURCE_DIR}/src/menu/Commands/StartUpMenu/CmdResetPin.cpp
+        ${CMAKE_SOURCE_DIR}/src/menu/Commands/StartUpMenu/CmdUnlockAccount.cpp
         )
 
 add_library(AstraMail_menu STATIC

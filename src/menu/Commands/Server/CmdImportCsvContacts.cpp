@@ -1,3 +1,4 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdImportCsvContacts.h"
 
 #include "core/contacts/ContactsManager.h"
@@ -40,6 +41,8 @@ namespace astra_mail
 
         CommandResult execute() override
         {
+            MailDataChangeScope change;
+            if (!mailCommandAllowed(change.allowed())) return CommandResult::Continue;
             CsvContactsImporter importer;
             if (!importer.loadFromFile(csvPath_))
             {
@@ -64,11 +67,15 @@ namespace astra_mail
                 return CommandResult::Continue;
             }
 
-            ContactsManager::instance().loadFromCache(
+            if (!ContactsManager::instance().loadFromCache(
                     "csv_import",
                     existingContacts,
                     existingLists
-            );
+            )) {
+                std::cout << mailBusyMessage() << "\n";
+                my::pause();
+                return CommandResult::Continue;
+            }
 
             std::cout << "[CSV-IMPORT] ОК: " << csvPath_.filename().string() << "\n"
                       << "  Загружено контактов: " << importer.contacts().size() << "\n"
@@ -145,6 +152,8 @@ namespace astra_mail
 
     CommandResult CmdImportCsvContacts::execute()
     {
+        MailDataChangeScope change;
+        if (!mailCommandAllowed(change.allowed())) return CommandResult::Continue;
         const fs::path desktopDir = guessDesktopDir();
         const fs::path homeDir = guessHomeDir();
         const fs::path exeDir = guessExeDir();

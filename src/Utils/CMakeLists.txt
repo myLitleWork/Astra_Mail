@@ -7,6 +7,8 @@ set(UTILS_CPP
         ${CMAKE_SOURCE_DIR}/src/Utils/ImapFolderFilter.cpp
         ${CMAKE_SOURCE_DIR}/src/Utils/ImapUtf7.cpp
         ${CMAKE_SOURCE_DIR}/src/Utils/SmtpClient.cpp
+        ${CMAKE_SOURCE_DIR}/src/Utils/MailTransport.cpp
+        ${CMAKE_SOURCE_DIR}/src/Utils/SecretInput.cpp
         ${CMAKE_SOURCE_DIR}/src/Utils/SubjectUtils.cpp
         ${CMAKE_SOURCE_DIR}/src/Utils/Utils.cpp
         )

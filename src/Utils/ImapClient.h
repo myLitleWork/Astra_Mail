@@ -1,12 +1,14 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <cstdio>
 #include <netdb.h>
 #include <unistd.h>
+#include "MailTransport.h"
 
 struct ImapSession
 {
-    int sock = -1;
+    astra_mail::net::Socket sock;
     int nextTag = 1;   // 👈 ДОБАВИТЬ
 };
 
@@ -119,6 +121,7 @@ void imapClose(ImapSession& ses);
         bool imapAppendSentFromFile(
                 const std::string& mimeFile,
                 std::string& err);
+        bool imapAppendSentFromStream(FILE* mime, std::string& err);
 
 
         bool imapAppendSent(const std::string& rawMime, std::string& err);

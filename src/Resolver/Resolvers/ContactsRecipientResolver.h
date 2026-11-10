@@ -23,7 +23,7 @@ namespace astra_mail
         resolve(const std::string& input) const override;
 
     private:
-        const ContactsManager& contacts_;
+        const ContactsSnapshot contacts_;
 
         static bool looksLikeEmail(const std::string& s);
         static std::string normalize(const std::string& s);

@@ -1,4 +1,5 @@
 #include "ContactsManager.h"
+#include "core/mail/AccountAccess.h"
 #include "ThunderbirdContactsImporter.h"
 #include "menu/Commands/Server/CmdScanThunderbirdProfiles.h"
 #include "UtilsFS/FsCompat.h"
@@ -14,6 +15,8 @@ namespace astra_mail {
     }
 
     bool ContactsManager::loadForProfile(const astra_mail::TbProfile &profile, bool& _hasDub) {
+        MailDataChangeScope change;
+        if (!change.allowed()) return false;
         clear();
 
         ThunderbirdContactsImporter importer;
@@ -54,46 +57,54 @@ namespace astra_mail {
 
         _hasDub = importer.hasDuplicateKeys();
 
-        contacts_ = importer.contacts();
-        mailingLists_ = importer.mailingLists();
-        activeProfileId_ = profile.id;
-
-        return true;
+        return loadFromCache(profile.id, importer.contacts(), importer.mailingLists());
     }
 
     bool ContactsManager::hasContacts() const {
+        std::lock_guard<std::mutex> lock(mutex_);
         return !contacts_.empty();
     }
 
-    const std::unordered_map<std::string, astra_mail::Contact> &
-    ContactsManager::contacts() const {
+    std::unordered_map<std::string, Contact> ContactsManager::contacts() const {
+        std::lock_guard<std::mutex> lock(mutex_);
         return contacts_;
     }
 
-    const std::unordered_map<std::string, std::vector<std::string>>&
-    ContactsManager::mailingLists() const
-    {
+    std::unordered_map<std::string, std::vector<std::string>> ContactsManager::mailingLists() const {
+        std::lock_guard<std::mutex> lock(mutex_);
         return mailingLists_;
     }
 
-    void ContactsManager::clear() {
-        contacts_.clear();
-        mailingLists_.clear();
-        activeProfileId_.clear();
+    ContactsSnapshot ContactsManager::snapshot() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return ContactsSnapshot{activeProfileId_, contacts_, mailingLists_};
     }
 
-    const std::string &ContactsManager::activeProfileId() const {
+    bool ContactsManager::clear() {
+        MailDataChangeScope change;
+        if (!change.allowed()) return false;
+        std::lock_guard<std::mutex> lock(mutex_);
+        contacts_.clear(); mailingLists_.clear(); activeProfileId_.clear();
+        return true;
+    }
+
+    std::string ContactsManager::activeProfileId() const {
+        std::lock_guard<std::mutex> lock(mutex_);
         return activeProfileId_;
     }
 
-    void ContactsManager::loadFromCache(
-            const std::string& profileId,
+    bool ContactsManager::loadFromCache(const std::string& profileId,
             const std::unordered_map<std::string, Contact>& contacts,
-            const std::unordered_map<std::string, std::vector<std::string>>& mailingLists)
-    {
-        activeProfileId_ = profileId;
-        contacts_ = contacts;
-        mailingLists_ = mailingLists;
+            const std::unordered_map<std::string, std::vector<std::string>>& mailingLists) {
+        MailDataChangeScope change;
+        if (!change.allowed()) return false;
+        // Build copies before publishing, so failed allocations cannot expose a
+        // mixture of the old and new contact/list/profile tables.
+        auto newContacts = contacts;
+        auto newLists = mailingLists;
+        auto newProfile = profileId;
+        std::lock_guard<std::mutex> lock(mutex_);
+        contacts_.swap(newContacts); mailingLists_.swap(newLists); activeProfileId_.swap(newProfile);
+        return true;
     }
-
 }

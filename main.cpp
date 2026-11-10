@@ -2,47 +2,52 @@
 #include "core/thunderbird/ThunderbirdSettings.h"
 #include "menu/StartupProfileLoader.h"
 #include "core/idle/IdleBackground.h"
+#include "core/mail/MailNetworkSettings.h"
 #include "Configs/Confg/ConfigBootstrap.h"
 #include "Utils/Utils.h"
 
 #include <string>
+#include <cstdio>
 
 
 
 
 
-void runStartup()
+bool runStartup()
 {
     astra_mail::TbProfile profile;
-
-    BOOT:
-    // 1. Пытаемся загрузить сохранённый профиль
-    if (!tryLoadSavedProfile(profile))
+    while (std::cin.good())
     {
-        // 2. Если не получилось — даём выбрать профиль
-        if (!astra_mail::profileSetupMenu())
-            goto BOOT;
-
-        // 3. После выбора ОБЯЗАТЕЛЬНО пробуем загрузить снова
-        //    (файл уже должен быть сохранён)
         if (!tryLoadSavedProfile(profile))
-            goto BOOT;
+        {
+            if (!std::cin.good()) return false;
+            if (!astra_mail::profileSetupMenu()) continue;
+            if (!tryLoadSavedProfile(profile)) continue;
+        }
+        if (!std::cin.good()) return false;
+        if (!astra_mail::pinMenu()) continue;
+        if (!std::cin.good()) return false;
+
+        if (!astra_mail::checkServersSilent())
+        {
+            std::cout << "[Старт] Нет соединения с серверами. Проверку можно выполнить в меню Система 2.\n";
+            astra_mail::my::pause();
+        }
+        return std::cin.good();
     }
+    return false;
+}
 
-    PIN_CHECK:
-    // 4. PIN проверяем ТОЛЬКО когда профиль уже есть
-    if (!astra_mail::pinMenu())
-        goto BOOT;
-
-    // 5. Проверка подключения — не блокируем вход, только сообщение
-    if (!astra_mail::checkServersSilent())
+static int inputExitCode()
+{
+    if (std::cin.bad() || std::ferror(stdin) || (std::cin.fail() && !std::cin.eof()))
     {
-        std::cout << "[Старт] Нет соединения с серверами. Проверку можно выполнить в меню Система 2.\n";
-        astra_mail::my::pause();
+        std::cerr << "Ошибка чтения ввода. Программа завершена.\n";
+        return 1;
     }
-
-    MAIN_MENU:
-    ; // runMainMenu();
+    if (std::cin.eof())
+        std::cout << "\nВвод завершён. Программа завершена.\n";
+    return 0;
 }
 
 
@@ -52,10 +57,11 @@ int main()
     setlocale(LC_ALL, "");
 
     config::ensureIdleSettings(false);
+    net::configure(loadMailNetworkSettings());
     config::ensureLocalMailSettings(false);
     config::ensureLocalContacts(false);
 
-    runStartup();
+    if (!runStartup()) return inputExitCode();
 
     astra_mail::IdleBackground::instance().start();
 
@@ -63,4 +69,5 @@ int main()
     menu->run();
 
     astra_mail::IdleBackground::instance().stop();
+    return inputExitCode();
 }

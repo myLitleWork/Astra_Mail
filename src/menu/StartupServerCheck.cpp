@@ -2,6 +2,7 @@
 
 #include "core/thunderbird/ThunderbirdSettings.h"
 #include "Utils/SmtpClient.h"
+#include "core/mail/AccountAccess.h"
 
 #include <iostream>
 
@@ -10,6 +11,7 @@ namespace astra_mail
 
     bool checkMailServers()
     {
+        MailOperationScope operation;
         auto& tb = ThunderbirdSettings::instance();
 
         if (!tb.active().valid() || !tb.hasMailPassword())

@@ -74,14 +74,15 @@ public:
     static ThunderbirdSettings& instance();
 
 public:
-    void setMailPassword(const std::string& pass) { mailPassword_ = pass; }
-    const std::string& mailPassword() const { return mailPassword_; }
-    bool hasMailPassword() const { return !mailPassword_.empty(); }
-    void clearMailPassword() { mailPassword_.clear(); }
+    bool setMailPassword(const std::string& pass);
+    const std::string& mailPassword() const;
+    bool hasMailPassword() const;
+    void clearMailPassword();
+    std::string secretContext() const;
 
 
     // сохранить мета-инфу выбранного профиля (для красивого вывода в меню)
-    void setCurrentProfile(const astra_mail::TbProfile& p) { currentProfile_ = p; }
+    bool setCurrentProfile(const astra_mail::TbProfile& p);
     const astra_mail::TbProfile& currentProfile() const { return currentProfile_; }
     bool hasCurrentProfile() const { return !currentProfile_.path.empty(); }
     bool applyAccount(const std::string& accountId);
@@ -96,7 +97,7 @@ public:
 
     bool applyDefaultAccount();
     const ActiveMailConfig& active() const;
-    void loadFromLocalCache(const astra_mail::TbProfile& profile, const astra_mail::LocalMailSettings& s);
+    bool loadFromLocalCache(const astra_mail::TbProfile& profile, const astra_mail::LocalMailSettings& s);
 
     std::string defaultAccount() const;
 
@@ -111,5 +112,6 @@ private:
     ActiveMailConfig active_;
     astra_mail::TbProfile currentProfile_;
     std::string mailPassword_;
+    std::string passwordContext_;
 
 };

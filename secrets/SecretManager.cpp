@@ -22,12 +22,16 @@ bool SecretManager::isInitialized() const {
     return backend_->isInitialized();
 }
 
-bool SecretManager::store(const std::string& p,
+bool SecretManager::hasSecret(const std::string& context) const { return backend_->hasSecret(context); }
+bool SecretManager::legacyAvailable(const std::string& context) const { return backend_->legacyAvailable(context); }
+bool SecretManager::migrateLegacy(const std::string& context, const std::string& pin) { return backend_->migrateLegacy(context, pin); }
+
+bool SecretManager::store(const std::string& context, const std::string& p,
                           const std::string& pin) {
-    return backend_->store(p, pin);
+    return backend_->store(context, p, pin);
 }
 
-bool SecretManager::load(const std::string& pin,
+bool SecretManager::load(const std::string& context, const std::string& pin,
                          std::string& out) {
-    return backend_->load(pin, out);
+    return backend_->load(context, pin, out);
 }

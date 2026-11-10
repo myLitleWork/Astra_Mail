@@ -1,5 +1,6 @@
 // Confirm.cpp
 #include "Confirm.h"
+#include "ConsoleInput.h"
 #include <iostream>
 
 namespace astra_mail
@@ -9,9 +10,9 @@ namespace astra_mail
         std::cout << question << " [y/N]: ";
         std::cout.flush();
 
-        char c = 0;
-        std::cin >> c;
-
-        return c == 'y' || c == 'Y';
+        std::string answer;
+        if (!readConsoleLine(answer)) return false;
+        const auto first = answer.find_first_not_of(" \t\r");
+        return first != std::string::npos && (answer[first] == 'y' || answer[first] == 'Y');
     }
 }

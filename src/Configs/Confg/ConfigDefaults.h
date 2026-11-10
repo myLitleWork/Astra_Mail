@@ -7,6 +7,7 @@ namespace astra_mail::config::defaults
     const char* attachmentGroups();
     const char* outgoingSubjectRules();
     const char* idleSettings();
+    const char* networkSettings();
     const char* idleSettingsHelp();
     const char* subjectRulesHelp();
     const char* attachmentGroupsHelp();

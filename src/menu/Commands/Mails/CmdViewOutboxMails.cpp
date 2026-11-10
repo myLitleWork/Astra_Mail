@@ -1,3 +1,4 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdViewOutboxMails.h"
 #include "core/mail/MailFolderScanner.h"
 #include "core/mail/MailFolderReport.h"
@@ -13,6 +14,8 @@ namespace astra_mail
 {
     CommandResult CmdViewOutboxMails::execute()
     {
+        MailOperationScope operation(std::try_to_lock);
+        if (!mailCommandAllowed(operation.allowed())) return CommandResult::Continue;
         auto resolver = std::make_shared<ContactsRecipientResolver>(ContactsManager::instance());
 
         MailFolderScanner scan(

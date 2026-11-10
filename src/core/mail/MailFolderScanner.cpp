@@ -49,6 +49,10 @@ namespace astra_mail
             auto name = entry.path().filename().string();
             auto path = entry.path().string();
 
+            // Delivery bookkeeping is never an attachment, even with ignoreHidden=false.
+            if (name.compare(0, 20, ".astramail-delivery-") == 0)
+                continue;
+
             if (opt_.ignoreHidden && isHiddenName(name))
                 continue;
 

@@ -1,4 +1,8 @@
+#include "Utils/ConsoleInput.h"
 #include "CmdApplyThunderbirdAccount.h"
+#include "core/mail/AccountAccess.h"
+#include "core/idle/IdleBackground.h"
+#include "menu/StartupProfileLoader.h"
 #include "Utils/Utils.h"
 #include "core/contacts/ContactsManager.h"
 #include "core/profile/ActiveProfileStorage.h"
@@ -13,10 +17,11 @@ namespace astra_mail
 {
     static std::string readLine(const std::string& prompt)
     {
+        if (!std::cin.good()) return {};
         std::cout << prompt;
         std::cout.flush();
         std::string s;
-        std::getline(std::cin >> std::ws, s);
+        readConsoleLine(s);
         return s;
     }
 
@@ -153,6 +158,12 @@ namespace astra_mail
 
     CommandResult CmdApplyThunderbirdAccount::execute()
     {
+        AccountChangeScope change;
+        if (!change.allowed()) {
+            std::cout << "Переключение аккаунта запрещено до завершения почтовой операции.\n";
+            return CommandResult::Continue;
+        }
+        IdleBackground::BusyGuard busy;
         auto& tb = ThunderbirdSettings::instance();
 
         profile_.active_account_id = acc_.accountId;
@@ -240,6 +251,7 @@ namespace astra_mail
             if (!validateLocalMailSettings(s, reason))
             {
                 fillMissingSettingsInteractive(s);
+                if (!std::cin.good()) return CommandResult::Continue;
             }
 
             if (validateLocalMailSettings(s, reason))
@@ -285,7 +297,7 @@ namespace astra_mail
         }
 
         std::cout << "Аккаунт применён и профиль сохранён\n";
-        my::pause();
+        pinMenu();
         return CommandResult::ExitMenu;
 
     }

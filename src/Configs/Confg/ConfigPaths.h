@@ -9,6 +9,7 @@ namespace astra_mail::config
     fs::path attachmentGroups();
     fs::path outgoingSubjectRules();
     fs::path idleSettings();
+    fs::path networkSettings();
     std::string imapFoldersConfig();
     fs::path localMailSettings();
     fs::path localContacts();

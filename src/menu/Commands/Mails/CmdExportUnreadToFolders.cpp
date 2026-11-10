@@ -1,4 +1,8 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdExportUnreadToFolders.h"
+#include "core/mail/AccountAccess.h"
+#include "core/thunderbird/ThunderbirdSettings.h"
+#include "Utils/SensitiveString.h"
 #include "core/idle/IdleBackground.h"
 #include "Utils/ImapClient.h"
 #include "Utils/EmlParser.h"
@@ -342,11 +346,12 @@ namespace astra_mail {
             : host_(std::move(host))
             , port_(port)
             , user_(std::move(user))
-            , pass_(std::move(pass))
+            , accountContext_(ThunderbirdSettings::instance().secretContext())
             , folders_{ std::move(folder) }
             , outDir_(std::move(outDir))
             , strategy_(strategy)
     {
+        clearSensitiveString(pass);
     }
 
     std::string CmdExportUnreadToFolders::title() const
@@ -370,6 +375,7 @@ namespace astra_mail {
                                               ExportStrategy strategy,
                                               std::ostream* log)
     {
+        MailOperationScope operation;
         if (log) *log << "[Экспорт] Запуск: " << outDir
                       << (strategy.mode == ExportMode::BySubject ? " (по темам)" : " (по типам вложений)")
                       << "\n";
@@ -672,6 +678,8 @@ namespace astra_mail {
                                                            ExportStrategy strategy,
                                                            std::ostream* log)
     {
+        MailOperationScope operation(std::try_to_lock);
+        if (!operation.allowed()) { if (log) *log << mailBusyMessage() << "\n"; return false; }
         if (log) *log << "[Экспорт][OFFLINE] Перенос из локального inbox → " << outDir
                       << (strategy.mode == ExportMode::BySubject ? " (по темам)" : " (по типам вложений)")
                       << "\n";
@@ -754,8 +762,15 @@ namespace astra_mail {
 
     CommandResult CmdExportUnreadToFolders::execute()
     {
+        MailOperationScope operation(std::try_to_lock);
+        if (!mailCommandAllowed(operation.allowed())) return CommandResult::Continue;
         IdleBackground::BusyGuard busy;
-        bool ok = runExport(host_, port_, user_, pass_, folders_, outDir_, strategy_, &std::cout);
+        const auto& tb = ThunderbirdSettings::instance();
+        if (accountContext_ != tb.secretContext() || !tb.hasMailPassword()) {
+            std::cout << "Аккаунт изменён или заблокирован. Откройте экспорт заново после ввода PIN.\n";
+            my::pause(); return CommandResult::Continue;
+        }
+        bool ok = runExport(host_, port_, user_, tb.mailPassword(), folders_, outDir_, strategy_, &std::cout);
         my::pause();
         return CommandResult::ExitMenu;
     }
@@ -768,11 +783,12 @@ namespace astra_mail {
             : host_(std::move(host))
             , port_(port)
             , user_(std::move(user))
-            , pass_(std::move(pass))
+            , accountContext_(ThunderbirdSettings::instance().secretContext())
             , folders_(folders)
             , outDir_(std::move(outDir))
             , strategy_(strategy)
     {
+        clearSensitiveString(pass);
     }
 
 

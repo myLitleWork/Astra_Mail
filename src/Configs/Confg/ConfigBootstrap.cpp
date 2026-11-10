@@ -48,6 +48,11 @@ namespace astra_mail::config
         ensureFile(localMailSettings(), defaults::localMailSettings(), force);
     }
 
+    void ensureNetworkSettings(bool force)
+    {
+        ensureFile(networkSettings(), defaults::networkSettings(), force);
+    }
+
     void ensureLocalContacts(bool force)
     {
         std::error_code ec;

@@ -1,3 +1,4 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdResetConfig.h"
 #include "Utils/Confirm.h"
 #include <iostream>
@@ -17,6 +18,8 @@ namespace astra_mail
 
     CommandResult CmdResetConfig::execute()
     {
+        MailDataChangeScope change;
+        if (!mailCommandAllowed(change.allowed())) return CommandResult::Continue;
         const std::string warning =
                 "ВНИМАНИЕ!\n"
                 "Текущие настройки будут УДАЛЕНЫ и заменены значениями по умолчанию.\n"

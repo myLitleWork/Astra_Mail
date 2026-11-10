@@ -60,6 +60,18 @@ namespace astra_mail::config::defaults
                 "  Как часто проверять, наступило ли время бездействия. По умолчанию: 30 сек.\n";
     }
 
+    const char* networkSettings()
+    {
+        return
+            "# Параметры связи. Изменения применяются после перезапуска программы.\n"
+            "# Все интервалы в секундах. Передача продолжается, пока есть прогресс.\n"
+            "# TCP keepalive выявляет потерянный канал даже при ожидании ответа.\n"
+            "dns_seconds=10\nconnect_seconds=10\n"
+            "smtp_command_seconds=300\nsmtp_data_start_seconds=120\nsmtp_final_seconds=600\n"
+            "io_idle_seconds=180\nimap_command_seconds=300\nimap_append_seconds=600\n"
+            "keep_idle_seconds=30\nkeep_interval_seconds=10\nkeep_probes=3\ntcp_user_seconds=60\n";
+    }
+
     const char* subjectRulesHelp()
     {
         return

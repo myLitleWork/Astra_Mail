@@ -1,3 +1,4 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdViewInboxMails.h"
 #include "core/mail/MailFolderScanner.h"
 #include "core/paths/AstraMailPaths.h"
@@ -103,6 +104,8 @@ namespace astra_mail
 
     CommandResult CmdViewInboxMails::execute()
     {
+        MailOperationScope operation(std::try_to_lock);
+        if (!mailCommandAllowed(operation.allowed())) return CommandResult::Continue;
         printInboxReport(std::cout);
         my::pause();
         return CommandResult::Continue;

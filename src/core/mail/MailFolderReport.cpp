@@ -1,5 +1,6 @@
 #include "MailFolderReport.h"
 #include "MailFolderScanner.h"
+#include "MailDeliveryState.h"
 
 namespace astra_mail
 {
@@ -20,6 +21,12 @@ namespace astra_mail
             os << "[" << (i + 1) << "] Получатель: " << m.recipient
                << (m.isAlias ? " (alias)" : "") << "\n";
             os << "    Папка: " << m.folderName << "\n";
+            MailDeliveryState state;
+            std::string stateError;
+            if (!state.load(m.folderPath, stateError))
+                os << "    Отправка заблокирована: " << stateError << "\n";
+            else if (state.exists)
+                os << "    Результат: " << state.summary() << "\n";
             os << "    Вложений: " << m.attachments.size() << "\n";
             os << "    ---------------------------------\n";
 

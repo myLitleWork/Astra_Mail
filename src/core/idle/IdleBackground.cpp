@@ -1,4 +1,5 @@
 #include "IdleBackground.h"
+#include "core/mail/AccountAccess.h"
 #include "IdleSettings.h"
 #include "menu/StartupProfileLoader.h"
 #include "core/thunderbird/ThunderbirdSettings.h"
@@ -26,25 +27,35 @@ namespace astra_mail
         return inst;
     }
 
+    static int64_t activityNowMs()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    IdleBackground::~IdleBackground() { stop(); }
+
     void IdleBackground::start()
     {
         if (thread_.joinable())
             return;
+        net::resetStop();
         stop_ = false;
-        lastActivity_ = std::chrono::steady_clock::now();
+        lastActivityMs_.store(activityNowMs());
         thread_ = std::thread(&IdleBackground::threadLoop, this);
     }
 
     void IdleBackground::stop()
     {
         stop_ = true;
+        net::requestStop();
         if (thread_.joinable())
             thread_.join();
     }
 
     void IdleBackground::resetTimer()
     {
-        lastActivity_ = std::chrono::steady_clock::now();
+        lastActivityMs_.store(activityNowMs());
     }
 
     void IdleBackground::enterBusy()
@@ -61,29 +72,38 @@ namespace astra_mail
     {
         while (!stop_)
         {
-            IdleSettingsValues settings = loadIdleSettings();
-            uint32_t checkSec = (settings.checkIntervalSeconds > 0) ? settings.checkIntervalSeconds : 30u;
-            uint32_t idleSec = (settings.idleThresholdSeconds > 0) ? settings.idleThresholdSeconds : 300u;
-
-            for (uint32_t i = 0; i < checkSec && !stop_; ++i)
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-
-            if (stop_)
-                break;
-
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastActivity_).count();
-            if (static_cast<uint32_t>(elapsed) < idleSec)
-                continue;
-
-            if (busyCount_.load(std::memory_order_relaxed) != 0)
-                continue;
-
-            runActions();
-            resetTimer();
+            // Also bound the retry rate when configuration/filesystem operations throw.
+            for (unsigned i = 0; i < 10 && !stop_; ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (stop_) break;
+            try {
+                IdleSettingsValues settings;
+                {
+                    MailOperationScope configRead(std::try_to_lock);
+                    if (!configRead.allowed() || busyCount_.load() != 0) continue;
+                    settings = loadIdleSettings();
+                }
+                const uint32_t checkSec = settings.checkIntervalSeconds ? settings.checkIntervalSeconds : 30u;
+                const uint32_t idleSec = settings.idleThresholdSeconds ? settings.idleThresholdSeconds : 300u;
+                for (uint64_t i = 10; i < uint64_t(checkSec) * 10 && !stop_; ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if (stop_) break;
+                const int64_t elapsed = activityNowMs() - lastActivityMs_.load();
+                if (elapsed < int64_t(idleSec) * 1000 || busyCount_.load() != 0) continue;
+                runActions();
+                resetTimer();
+            } catch (const std::exception& error) {
+                resetTimer();
+                std::lock_guard<std::mutex> lock(coutMutex_);
+                std::cout << "\nФоновый цикл прерван: " << error.what()
+                          << ". Повтор после следующего периода бездействия.\n" << std::flush;
+            } catch (...) {
+                resetTimer();
+                std::lock_guard<std::mutex> lock(coutMutex_);
+                std::cout << "\nФоновый цикл прерван. Повтор после следующего периода бездействия.\n" << std::flush;
+            }
         }
     }
-
     size_t IdleBackground::countInboxLetters() const
     {
         size_t count = 0;
@@ -131,6 +151,8 @@ namespace astra_mail
 
     void IdleBackground::runActions()
     {
+        MailOperationScope operation(std::try_to_lock);
+        if (!operation.allowed() || busyCount_.load() != 0 || stop_) return;
         size_t inboxBefore = countInboxLetters();
         size_t outboxBefore = countOutboxLetters();
 
@@ -142,11 +164,14 @@ namespace astra_mail
         const auto& imap = tb.imapServers().at(active.imapServerId);
         const std::string& password = tb.mailPassword();
 
+        showBackgroundMenu(inboxBefore, outboxBefore, "Проверка IMAP и исходящей очереди...");
+
         // --- Экспорт входящих (IMAP) — пробуем, но не блокируем отправку ---
         bool imapOk = false;
+        std::string imapError;
         {
             std::vector<std::string> rawFolders;
-            std::string err;
+            std::string& err = imapError;
             if (ImapClient::listMailboxes(imap.host, imap.port, imap.user, password, rawFolders, err))
             {
                 imapOk = true;
@@ -169,7 +194,7 @@ namespace astra_mail
                         ++it;
                 }
 
-                if (!imapFolders.empty())
+                if (!imapFolders.empty() && !net::stopping())
                 {
                     showBackgroundMenu(inboxBefore, outboxBefore, "Экспорт входящих...");
                     std::string inboxPath = getInboxRoot().string();
@@ -183,22 +208,25 @@ namespace astra_mail
             }
         }
 
-        // --- Отправка исходящих (SMTP) — пробуем ВСЕГДА, даже если IMAP лежит ---
-        size_t outboxNow = countOutboxLetters();
-        if (outboxNow > 0)
-        {
-            showBackgroundMenu(countInboxLetters(), outboxNow,
-                               imapOk ? "Отправка из outbox..." : "IMAP недоступен. Пробуем отправить outbox...");
-            CmdSendMailsFromOutbox::runSendFromOutbox(nullptr);
-        }
-
-        size_t inboxAfter = countInboxLetters();
-        size_t outboxAfter = countOutboxLetters();
-
-        std::string finalStatus = "Готово.";
-        if (!imapOk)
-            finalStatus += " (IMAP был недоступен — входящие не проверены)";
-
-        showBackgroundMenu(inboxAfter, outboxAfter, finalStatus);
+        // An IMAP failure does not prevent an SMTP attempt. Shutdown cancels both.
+        if (net::stopping()) return;
+        const size_t outboxNow = countOutboxLetters();
+        showBackgroundMenu(countInboxLetters(), outboxNow,
+                           imapOk ? "Отправка из outbox..." : "IMAP недоступен. Пробуем отправить outbox...");
+        SendCycleReport report;
+        CmdSendMailsFromOutbox::runSendFromOutbox(nullptr, &report);
+        if (net::stopping()) return;
+        const auto settings = loadIdleSettings();
+        std::string status = report.queuedMessages ? "Часть писем ожидает отправки." : "Исходящая очередь обработана.";
+        status += "\n  Подтверждено сервером за цикл: " + std::to_string(report.confirmedRecipients) + " адресатов";
+        status += "\n  Полностью отправлено за цикл: " + std::to_string(report.completedMessages) + " писем";
+        status += "\n  Ожидают подтверждения: " + std::to_string(report.awaitingRecipients) + " адресатов";
+        status += "\n  Из них результат неизвестен: " + std::to_string(report.unconfirmedRecipients);
+        if (report.unconfirmedRecipients) status += " (будет автоповтор, возможен дубль)";
+        if (!report.lastError.empty()) status += "\n  Последняя ошибка: " + report.lastError;
+        if (!imapOk) status += "\n  Входящие не проверены: " + imapError;
+        status += "\n  Следующий цикл после " + std::to_string(settings.idleThresholdSeconds ? settings.idleThresholdSeconds : 300u) +
+                  " с бездействия (проверка каждые " + std::to_string(settings.checkIntervalSeconds ? settings.checkIntervalSeconds : 30u) + " с).";
+        showBackgroundMenu(countInboxLetters(), report.queuedMessages, status);
     }
 }

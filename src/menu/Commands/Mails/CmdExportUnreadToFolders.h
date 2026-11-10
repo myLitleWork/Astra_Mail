@@ -60,7 +60,7 @@ namespace astra_mail {
         std::string host_;
         int port_;
         std::string user_;
-        std::string pass_;
+        std::string accountContext_;
         std::string outDir_;
 
         std::vector<ImapFolder> folders_;

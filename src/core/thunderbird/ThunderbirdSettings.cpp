@@ -1,4 +1,7 @@
 #include "ThunderbirdSettings.h"
+#include "core/mail/AccountAccess.h"
+#include "Utils/SensitiveString.h"
+#include <algorithm>
 
 
 #include <fstream>
@@ -95,6 +98,9 @@ std::string ThunderbirdSettings::defaultAccount() const
 
 bool ThunderbirdSettings::load(const std::string& prefsPath)
 {
+    astra_mail::AccountChangeScope change;
+    if (!change.allowed()) return false;
+    clearMailPassword();
     accounts_.clear();
     imap_.clear();
     smtp_.clear();
@@ -213,6 +219,9 @@ bool ThunderbirdSettings::load(const std::string& prefsPath)
 
 bool ThunderbirdSettings::applyDefaultAccount()
 {
+    astra_mail::AccountChangeScope change;
+    if (!change.allowed()) return false;
+    clearMailPassword();
     active_ = {}; // сброс
 
     auto accIt = accounts_.find(defaultAccount_);
@@ -244,8 +253,71 @@ const ActiveMailConfig& ThunderbirdSettings::active() const
     return active_;
 }
 
-void ThunderbirdSettings::loadFromLocalCache(const astra_mail::TbProfile& profile, const astra_mail::LocalMailSettings& s)
+std::string ThunderbirdSettings::secretContext() const
 {
+    if (!active_.valid()) return {};
+    const auto im = imap_.find(active_.imapServerId);
+    const auto sm = smtp_.find(active_.smtpServerId);
+    const auto identity = identities_.find(active_.identityId);
+    if (im == imap_.end() || sm == smtp_.end() || identity == identities_.end() ||
+        im->second.host.empty() || sm->second.host.empty()) return {};
+    auto host = [](std::string value) {
+        for (char& c : value) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+        while (!value.empty() && value.back() == '.') value.pop_back();
+        return value;
+    };
+    std::string context = "AstraMail-account-1";
+    auto add = [&](const std::string& value) { context += ":" + std::to_string(value.size()) + ":" + value; };
+    add(currentProfile_.id); add(currentProfile_.path); add(active_.accountId);
+    add(host(im->second.host)); add(std::to_string(im->second.port)); add(im->second.user); add(im->second.ssl ? "1" : "0");
+    add(host(sm->second.host)); add(std::to_string(sm->second.port)); add(sm->second.user); add(sm->second.ssl ? "1" : "0");
+    add(identity->second.email);
+    return context;
+}
+
+bool ThunderbirdSettings::hasMailPassword() const
+{
+    return !mailPassword_.empty() && !passwordContext_.empty() && passwordContext_ == secretContext();
+}
+
+const std::string& ThunderbirdSettings::mailPassword() const
+{
+    static const std::string empty;
+    return hasMailPassword() ? mailPassword_ : empty;
+}
+
+void ThunderbirdSettings::clearMailPassword()
+{
+    astra_mail::AccountChangeScope change;
+    if (!change.allowed()) return;
+    astra_mail::clearSensitiveString(mailPassword_); passwordContext_.clear();
+}
+
+bool ThunderbirdSettings::setMailPassword(const std::string& pass)
+{
+    astra_mail::AccountChangeScope change;
+    if (!change.allowed()) return false;
+    const auto context = secretContext();
+    clearMailPassword();
+    if (context.empty() || pass.empty()) return false;
+    mailPassword_ = pass; passwordContext_ = context;
+    return true;
+}
+
+bool ThunderbirdSettings::setCurrentProfile(const astra_mail::TbProfile& profile)
+{
+    astra_mail::AccountChangeScope change;
+    if (!change.allowed()) return false;
+    if (profile.id != currentProfile_.id || profile.path != currentProfile_.path) clearMailPassword();
+    currentProfile_ = profile;
+    return true;
+}
+
+bool ThunderbirdSettings::loadFromLocalCache(const astra_mail::TbProfile& profile, const astra_mail::LocalMailSettings& s)
+{
+    astra_mail::AccountChangeScope change;
+    if (!change.allowed()) return false;
+    clearMailPassword();
     accounts_.clear();
     imap_.clear();
     smtp_.clear();
@@ -289,11 +361,15 @@ void ThunderbirdSettings::loadFromLocalCache(const astra_mail::TbProfile& profil
     active_.identityId = id.identityId;
     active_.imapServerId = im.serverId;
     active_.smtpServerId = sm.serverId;
+    return true;
 }
 
 
 bool ThunderbirdSettings::applyAccount(const std::string& accountId)
 {
+    astra_mail::AccountChangeScope change;
+    if (!change.allowed()) return false;
+    clearMailPassword();
     active_ = {}; // сброс
 
     // 1. аккаунт

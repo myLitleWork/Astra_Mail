@@ -1,6 +1,13 @@
 // ImapClient.cpp
 #include "ImapClient.h"
+#include "core/mail/AccountAccess.h"
 #include "core/thunderbird/ThunderbirdSettings.h"
+#include "SensitiveString.h"
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <algorithm>
+#include <cctype>
 
 // POSIX / sockets
 #include <sys/socket.h>
@@ -27,122 +34,37 @@ namespace fs = std::experimental::filesystem;
 #endif
 
 
-static bool sendAll(int s, const void* data, size_t len)
+static bool wireSendAll(int s, const void* data, size_t len)
 {
-    const char* p = static_cast<const char*>(data);
-    while (len > 0)
-    {
-        ssize_t n = send(s, p, len, 0);
-        if (n <= 0)
-            return false;
-        p   += n;
-        len -= n;
-    }
-    return true;
+    return astra_mail::net::sendAll(s, data, len);
 }
-
-static bool tcpConnectQuick(const std::string& host, int port, int timeoutMs, std::string& err)
-{
-    err.clear();
-
-    addrinfo hints{}, *res = nullptr;
-    hints.ai_socktype = SOCK_STREAM;
-
-    if (::getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res) != 0)
-    {
-        err = "DNS resolve failed";
-        return false;
-    }
-
-    int sock = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sock < 0)
-    {
-        ::freeaddrinfo(res);
-        err = "socket() failed";
-        return false;
-    }
-
-    // non-blocking connect with select timeout
-    int flags = ::fcntl(sock, F_GETFL, 0);
-    if (flags >= 0)
-        ::fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-
-    int rc = ::connect(sock, res->ai_addr, res->ai_addrlen);
-    if (rc == 0)
-    {
-        ::close(sock);
-        ::freeaddrinfo(res);
-        return true;
-    }
-
-    if (errno != EINPROGRESS)
-    {
-        ::close(sock);
-        ::freeaddrinfo(res);
-        err = "connect() failed";
-        return false;
-    }
-
-    fd_set wfds;
-    FD_ZERO(&wfds);
-    FD_SET(sock, &wfds);
-
-    timeval tv{};
-    tv.tv_sec  = timeoutMs / 1000;
-    tv.tv_usec = (timeoutMs % 1000) * 1000;
-
-    rc = ::select(sock + 1, nullptr, &wfds, nullptr, &tv);
-    if (rc <= 0)
-    {
-        ::close(sock);
-        ::freeaddrinfo(res);
-        err = (rc == 0) ? "connect timeout" : "select() failed";
-        return false;
-    }
-
-    int so_error = 0;
-    socklen_t len = sizeof(so_error);
-    if (::getsockopt(sock, SOL_SOCKET, SO_ERROR, &so_error, &len) != 0 || so_error != 0)
-    {
-        ::close(sock);
-        ::freeaddrinfo(res);
-        err = "connect() failed";
-        return false;
-    }
-
-    ::close(sock);
-    ::freeaddrinfo(res);
-    return true;
-}
-
 static bool recvLine(int s, std::string& out)
 {
     out.clear();
+    if (s < 0) return false;
     char c;
     while (true) {
-        ssize_t n = recv(s, &c, 1, 0);
+        ssize_t n = astra_mail::net::receive(s, &c, 1);
 
         if (n <= 0) return false;
         out.push_back(c);
+        if (out.size() > 65536) return false;
         if (c == '\n') break;
     }
     return true;
 }
 
-static void sendCmd(int s, const std::string& cmd)
-{
-    std::string line = cmd + "\r\n";
-    send(s, line.c_str(), line.size(), 0);
-}
 
 
 
 
-
-    static void sendLine(int s, const std::string& line)
+    static bool sendLine(int s, const std::string& line)
     {
         std::string l = line + "\r\n";
-        sendAll(s, l.data(), l.size());
+        astra_mail::ClearSensitiveOnExit wipe{l};
+        if (!wireSendAll(s, l.data(), l.size())) return false;
+        astra_mail::net::beginResponse(s, astra_mail::net::settingsFor(s).imapCommandMs);
+        return true;
     }
 
     static std::string nextTag(ImapSession& ses)
@@ -153,367 +75,199 @@ static void sendCmd(int s, const std::string& cmd)
     static std::string sendTagged(ImapSession& ses, const std::string& cmd)
     {
         std::string tag = "A" + std::to_string(ses.nextTag++);
-        sendLine(ses.sock, tag + " " + cmd);
+        if (cmd.find_first_of("\r\n") != std::string::npos || cmd.find('\0') != std::string::npos) {
+            ses.sock.reset(); return tag;
+        }
+        if (!sendLine(ses.sock, tag + " " + cmd)) ses.sock.reset();
         return tag;
     }
 
-
-bool imapOpen(ImapSession& ses,
-                     const std::string& host,
-                     int port,
-                     std::string& err)
-{
-    addrinfo hints{}, *res = nullptr;
-    hints.ai_socktype = SOCK_STREAM;
-
-    if (::getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res) != 0)
-    {
-        err = "DNS resolve failed";
-        return false;
+// Never include authentication arguments or server text in these errors:
+// a server can echo credentials in a NO/BAD response.
+static std::string taggedStatus(const std::string& line, const std::string& tag) {
+    const auto prefix = tag + " ";
+    if (line.compare(0, prefix.size(), prefix) != 0) return {};
+    auto status = line.substr(prefix.size(), line.find_first_of(" \r\n", prefix.size()) - prefix.size());
+    for (char& c : status) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return status;
+}
+static bool waitCommandReply(ImapSession& ses, const std::string& tag, bool continuation,
+                             const char* stage, std::string& error) {
+    std::string line;
+    while (recvLine(ses.sock, line)) {
+        const auto status = taggedStatus(line, tag);
+        if (!status.empty()) {
+            if (!continuation && status == "OK") return true;
+            error = std::string(stage) + ": " +
+                (status == "NO" || status == "BAD" ? status : "unexpected tagged reply");
+            ses.sock.reset(); return false;
+        }
+        if (line[0] == '+') {
+            if (continuation && (line.size() == 1 || line[1] == ' ' || line[1] == '\r' || line[1] == '\n')) return true;
+            break;
+        }
+        // Untagged status/capability responses are allowed between replies.
+        if (line.compare(0, 2, "* ") != 0 || line.compare(0, 5, "* BYE") == 0) break;
     }
-
-    ses.sock = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (ses.sock < 0)
-    {
-        ::freeaddrinfo(res);
-        err = "socket() failed";
-        return false;
+    error = std::string(stage) + ": " + (astra_mail::net::lastError().empty() ?
+        "connection/protocol error" : astra_mail::net::lastError());
+    ses.sock.reset(); return false;
+}
+static bool sendStringCommand(ImapSession& ses, const char* command,
+        std::initializer_list<std::reference_wrapper<const std::string>> arguments,
+        std::string& tag, std::string& error) {
+    error.clear();
+    // Validate ALL arguments before any part of a command is put on the wire.
+    for (const auto& argument : arguments) {
+        const auto& value = argument.get();
+        if (value.find_first_of("\r\n") != std::string::npos || value.find('\0') != std::string::npos) {
+            error = std::string("IMAP ") + command + ": CR/LF/NUL in argument";
+            ses.sock.reset(); return false;
+        }
     }
-
-    if (::connect(ses.sock, res->ai_addr, res->ai_addrlen) != 0)
-    {
-        ::freeaddrinfo(res);
-        ::close(ses.sock);
-        ses.sock = -1;
-        err = "connect() failed";
-        return false;
+    tag = nextTag(ses);
+    std::string part = tag + " " + command;
+    astra_mail::ClearSensitiveOnExit wipe{part};
+    for (const auto& argument : arguments) {
+        const auto& value = argument.get();
+        part += ' ';
+        const bool quoted = std::all_of(value.begin(), value.end(),
+            [](unsigned char c) { return c >= 32 && c < 127; });
+        if (quoted) {
+            part += '"';
+            for (char c : value) { if (c == '"' || c == '\\') part += '\\'; part += c; }
+            part += '"';
+        } else {
+            part += "{" + std::to_string(value.size()) + "}";
+            if (!sendLine(ses.sock, part)) {
+                error = std::string("IMAP ") + command + ": " + astra_mail::net::lastError();
+                ses.sock.reset(); return false;
+            }
+            astra_mail::clearSensitiveString(part);
+            if (!waitCommandReply(ses, tag, true, command, error)) return false;
+            if (!wireSendAll(ses.sock, value.data(), value.size())) {
+                error = std::string("IMAP ") + command + ": " + astra_mail::net::lastError();
+                ses.sock.reset(); return false;
+            }
+        }
     }
-
-    ::freeaddrinfo(res);
-
-    std::string banner;
-    if (!recvLine(ses.sock, banner))
-    {
-        err = "no IMAP banner";
-        ::close(ses.sock);
-        ses.sock = -1;
-        return false;
+    if (!sendLine(ses.sock, part)) {
+        error = std::string("IMAP ") + command + ": " + astra_mail::net::lastError();
+        ses.sock.reset(); return false;
     }
-
     return true;
 }
-
-bool imapLogin(ImapSession& ses,
-                      const std::string& user,
-                      const std::string& pass,
-                      std::string& err)
-{
-    std::string tag = sendTagged(ses, "LOGIN " + user + " " + pass);
-
-    std::string line;
-    while (recvLine(ses.sock, line))
-    {
-        if (line.rfind(tag + " OK", 0) == 0)
-            return true;
-        if (line.rfind(tag + " NO", 0) == 0 ||
-            line.rfind(tag + " BAD", 0) == 0)
-            break;
+static bool validUid(const std::string& uid) {
+    if (uid.empty() || uid.size() > 10 || uid[0] == '0') return false;
+    uint64_t number = 0;
+    for (unsigned char c : uid) {
+        if (c < '0' || c > '9') return false;
+        number = number * 10 + c - '0';
     }
-
-    err = "IMAP LOGIN failed";
-    return false;
+    return number <= 4294967295ULL;
 }
 
-
-bool imapSelect(ImapSession& ses,
-                       const std::string& folder,
-                       std::string& err)
+bool imapOpen(ImapSession& ses, const std::string& host, int port, std::string& err)
 {
-    std::string tag = sendTagged(ses, "SELECT \"" + folder + "\"");
-
-    std::string line;
-    while (recvLine(ses.sock, line))
-    {
-        if (line.rfind(tag + " OK", 0) == 0)
-            return true;
-
-        if (line.rfind(tag + " NO", 0) == 0 ||
-            line.rfind(tag + " BAD", 0) == 0)
-            break;
+    ses.sock.reset(); ses.nextTag = 1;
+    ses.sock = astra_mail::net::connectSocket(host, port, err);
+    if (ses.sock < 0) return false;
+    std::string banner;
+    if (!recvLine(ses.sock, banner)) {
+        err = "No IMAP banner: " + astra_mail::net::lastError();
+        ses.sock.reset(); return false;
     }
-
-    err = "IMAP SELECT failed";
-    return false;
+    return true;
+}
+bool imapLogin(ImapSession& ses, const std::string& user, const std::string& pass, std::string& err)
+{
+    std::string tag;
+    return sendStringCommand(ses, "LOGIN", {std::cref(user), std::cref(pass)}, tag, err) &&
+           waitCommandReply(ses, tag, false, "IMAP LOGIN", err);
 }
 
-
+bool imapSelect(ImapSession& ses, const std::string& folder, std::string& err)
+{
+    std::string tag;
+    return sendStringCommand(ses, "SELECT", {std::cref(folder)}, tag, err) &&
+           waitCommandReply(ses, tag, false, "IMAP SELECT", err);
+}
 void imapClose(ImapSession& ses)
 {
     if (ses.sock >= 0)
     {
-        // LOGOUT — тоже IMAP-команда → через tag
-        sendTagged(ses, "LOGOUT");
-        ::close(ses.sock);
-        ses.sock = -1;
+        astra_mail::net::sendBestEffort(ses.sock, "A" + std::to_string(ses.nextTag++) + " LOGOUT\r\n");
+        ses.sock.reset();
     }
 }
 
 
-bool ImapClient::listFolders(const std::string& host,
-                             int port,
-                             const std::string& user,
-                             const std::string& pass,
-                             std::string& outResult,
-                             std::string& outError)
+bool ImapClient::listFolders(const std::string& host, int port, const std::string& user,
+                             const std::string& pass, std::string& outResult, std::string& outError)
 {
-    outResult.clear();
-    outError.clear();
-
-    // DNS resolve
-    addrinfo hints{}, *res = nullptr;
-    hints.ai_socktype = SOCK_STREAM;
-
-    if (getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res) != 0) {
-        outError = "DNS resolve failed";
-        return false;
-    }
-
-    int s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (s < 0) {
-        outError = "socket() failed";
-        freeaddrinfo(res);
-        return false;
-    }
-
-    if (connect(s, res->ai_addr, res->ai_addrlen) != 0) {
-        outError = "connect() failed";
-        freeaddrinfo(res);
-        close(s);
-        return false;
-    }
-    freeaddrinfo(res);
-
-    // read greeting
+    outResult.clear(); outError.clear();
+    ImapSession ses;
+    if (!imapOpen(ses, host, port, outError) || !imapLogin(ses, user, pass, outError)) return false;
+    const auto tag = sendTagged(ses, R"(LIST "" "*")");
     std::string line;
-    if (!recvLine(s, line)) { outError = "No greeting"; close(s); return false; }
-    outResult += line;
-
-    // LOGIN
-    sendCmd(s, "A1 LOGIN " + user + " " + pass);
-    while (true) {
-        if (!recvLine(s, line)) break;
+    while (recvLine(ses.sock, line)) {
         outResult += line;
-        if (line.rfind("A1 ", 0) == 0) break;
+        if (line.rfind(tag + " OK", 0) == 0) { imapClose(ses); return true; }
+        if (line.rfind(tag + " NO", 0) == 0 || line.rfind(tag + " BAD", 0) == 0) break;
     }
-
-    // LIST "" "*"
-    sendCmd(s, R"(A2 LIST "" "*")");
-    while (true) {
-        if (!recvLine(s, line)) break;
-        outResult += line;
-        if (line.rfind("A2 ", 0) == 0) break;
-    }
-
-    // LOGOUT
-    sendCmd(s, "A3 LOGOUT");
-    recvLine(s, line);
-    outResult += line;
-
-    close(s);
-    return true;
+    outError = "IMAP LIST failed: " + (astra_mail::net::lastError().empty() ? line : astra_mail::net::lastError());
+    return false;
 }
-
-
 bool ImapClient::imapAppendSentFromFile(const std::string& mimeFile, std::string& err)
 {
-    err.clear();
-
-    std::ifstream f(mimeFile, std::ios::binary);
-    if (!f)
-    {
-        err = "cannot open mime file: " + mimeFile;
-        return false;
-    }
-
-    std::string raw((std::istreambuf_iterator<char>(f)),
-                    std::istreambuf_iterator<char>());
-
-    if(verbose_)
-        std::cout << "[IMAP] loaded MIME from file, size=" << raw.size() << "\n";
-
-    if (raw.empty())
-    {
-        err = "mime file empty";
-        return false;
-    }
-
-    return ImapClient::imapAppendSent(raw, err);
+    std::unique_ptr<FILE, decltype(&std::fclose)> file(std::fopen(mimeFile.c_str(), "rb"), &std::fclose);
+    if (!file) { err = "cannot open mime file: " + mimeFile; return false; }
+    return imapAppendSentFromStream(file.get(), err);
 }
 
-
-
+bool ImapClient::imapAppendSentFromStream(FILE* file, std::string& err)
+{
+    err.clear();
+    if (!file || ::fseeko(file, 0, SEEK_SET) != 0) { err = "cannot rewind MIME stream"; return false; }
+    std::clearerr(file);
+    std::string raw;
+    char buffer[8192];
+    size_t count;
+    while ((count = std::fread(buffer, 1, sizeof(buffer), file)) != 0) raw.append(buffer, count);
+    if (std::ferror(file)) { err = "cannot read MIME stream"; return false; }
+    if (raw.empty()) { err = "mime stream empty"; return false; }
+    if (verbose_) std::cout << "[IMAP] loaded MIME stream, size=" << raw.size() << "\n";
+    return imapAppendSent(raw, err);
+}
 bool ImapClient::imapAppendSent(const std::string& rawMime, std::string& err)
 {
-    // Берём реальные параметры из активной конфигурации Thunderbird,
-    // а не из хардкода (иначе "Sent" будет ломать отправку).
+    astra_mail::MailOperationScope operation;
     auto& tb = ThunderbirdSettings::instance();
-    if (!tb.active().valid() || !tb.hasMailPassword())
-    {
-        err = "Thunderbird account/password not set";
-        return false;
+    if (!tb.active().valid() || !tb.hasMailPassword()) {
+        err = "Thunderbird account/password not set"; return false;
     }
-
-    const auto& a = tb.active();
-    const auto& imapCfg = tb.imapServers().at(a.imapServerId);
-
-    const std::string& hostS = imapCfg.host;
-    int port = imapCfg.port;
-    const std::string& userS = imapCfg.user;
-    const std::string& passS = tb.mailPassword();
-
-    // Если сети нет/IMAP недоступен — не тратим время на протокол APPEND.
-    // SMTP уже мог успешно отправить письмо; APPEND в Sent — дополнительная операция.
-    {
-        std::string pingErr;
-        if (!tcpConnectQuick(hostS, port, 3000, pingErr))
-        {
-            err = "IMAP unreachable: " + pingErr;
-            return false;
-        }
+    const auto& config = tb.imapServers().at(tb.active().imapServerId);
+    ImapSession ses;
+    if (!imapOpen(ses, config.host, config.port, err) || !imapLogin(ses, config.user, tb.mailPassword(), err)) return false;
+    const auto tag = sendTagged(ses, "APPEND Sent (\\Seen) {" + std::to_string(rawMime.size()) + "}");
+    std::string line;
+    bool continuation = false;
+    while (recvLine(ses.sock, line)) {
+        if (line.rfind("+", 0) == 0) { continuation = true; break; }
+        if (line.rfind(tag + " NO", 0) == 0 || line.rfind(tag + " BAD", 0) == 0) break;
     }
-
-    const char* host = hostS.c_str();
-    const char* user = userS.c_str();
-    const char* pass = passS.c_str();
-
-    auto log = [this](const std::string& s)
-    {
-        if(!verbose_)
-            return;
-
-        std::cout << "[IMAP] " << s << "\n";
-    };
-
-    addrinfo hints{}, *res = nullptr;
-    hints.ai_socktype = SOCK_STREAM;
-
-    log(std::string("connect ") + host + ":" + std::to_string(port));
-
-    if (getaddrinfo(host, std::to_string(port).c_str(), &hints, &res) != 0)
-    {
-        err = "DNS error";
-        return false;
+    if (!continuation) { err = "APPEND rejected: " + (astra_mail::net::lastError().empty() ? line : astra_mail::net::lastError()); return false; }
+    if (!wireSendAll(ses.sock, rawMime.data(), rawMime.size()) || !wireSendAll(ses.sock, "\r\n", 2)) {
+        err = "APPEND transfer failed: " + astra_mail::net::lastError(); return false;
     }
-
-    int sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sock < 0)
-    {
-        freeaddrinfo(res);
-        err = "socket() failed";
-        return false;
+    astra_mail::net::beginResponse(ses.sock, astra_mail::net::settingsFor(ses.sock).imapAppendMs);
+    while (recvLine(ses.sock, line)) {
+        if (line.rfind(tag + " OK", 0) == 0) { imapClose(ses); return true; }
+        if (line.rfind(tag + " NO", 0) == 0 || line.rfind(tag + " BAD", 0) == 0) break;
     }
-
-    if (connect(sock, res->ai_addr, res->ai_addrlen) != 0)
-    {
-        freeaddrinfo(res);
-        close(sock);
-        err = "connect() failed";
-        return false;
-    }
-    freeaddrinfo(res);
-
-    auto recvUntil = [&](const std::string& token)
-    {
-        std::string all;
-        char buf[2048];
-
-        while (true)
-        {
-            ssize_t n = recv(sock, buf, sizeof(buf) - 1, 0);
-            if (n <= 0) break;
-
-            buf[n] = 0;
-            all += buf;
-
-            log(buf);
-
-            if (all.find(token) != std::string::npos)
-                break;
-        }
-        return all;
-    };
-
-    auto sendCmd = [&](const std::string& s)
-    {
-        log(s);
-        std::string line = s + "\r\n";
-        sendAll(sock, line.data(), line.size());
-    };
-
-    recvUntil("\n"); // banner
-
-    sendCmd(std::string("a1 LOGIN ") + user + " " + pass);
-    recvUntil("a1 OK");
-
-    sendCmd("a2 SELECT Sent");
-    recvUntil("a2 OK");
-
-    const size_t sz = rawMime.size();
-    log("APPEND size = " + std::to_string(sz));
-
-    sendCmd("a3 APPEND Sent (\\Seen) {" + std::to_string(sz) + "}");
-
-    // Сервер должен ответить continuation: "+ ..."
-    // Если вместо этого вернёт "a3 NO/BAD ..." — покажем реальную строку.
-    std::string r = recvUntil("\n");
-    if (r.find('+') == std::string::npos)
-    {
-        // Попробуем дочитать ещё немного, чтобы захватить tagged NO/BAD, если он пришёл чуть позже.
-        r += recvUntil("\n");
-        if (r.find("a3 NO") != std::string::npos || r.find("a3 BAD") != std::string::npos)
-            err = "APPEND rejected: " + r;
-        else
-            err = "Server did not accept literal: " + r;
-        close(sock);
-        return false;
-    }
-
-    log("sending MIME body");
-    if (!sendAll(sock, rawMime.data(), rawMime.size()))
-    {
-        err = "sendAll(body) failed";
-        close(sock);
-        return false;
-    }
-
-// 🔥 ОБЯЗАТЕЛЬНО завершить APPEND
-    if (!sendAll(sock, "\r\n", 2))
-    {
-        err = "sendAll(CRLF) failed";
-        close(sock);
-        return false;
-    }
-
-    log("waiting a3 OK");
-
-    r = recvUntil("a3 OK");
-    if (r.find("a3 OK") == std::string::npos)
-    {
-        err = "APPEND failed / no a3 OK";
-        close(sock);
-        return false;
-    }
-
-    sendCmd("a4 LOGOUT");
-    recvUntil("OK");
-
-    close(sock);
-    log("done");
-    return true;
+    err = "APPEND not confirmed: " + (astra_mail::net::lastError().empty() ? line : astra_mail::net::lastError());
+    return false;
 }
-
-
-
 bool ImapClient::markSeenByUid(const std::string& host,
                                int port,
                                const std::string& user,
@@ -577,6 +331,8 @@ bool ImapClient::fetchRawEmlByUid(ImapSession& ses,
     outRawEml.clear();
     err.clear();
 
+    if (!validUid(uid)) { err = "FETCH: invalid UID"; return false; }
+
     // ⬇️ ОТПРАВКА С TAG
     std::string tag =
             sendTagged(ses, "UID FETCH " + uid + " (BODY.PEEK[])");
@@ -587,6 +343,9 @@ bool ImapClient::fetchRawEmlByUid(ImapSession& ses,
     // 1️⃣ Ищем {size}
     while (recvLine(ses.sock, line))
     {
+        if (line.rfind(tag + " NO", 0) == 0 || line.rfind(tag + " BAD", 0) == 0) {
+            err = "FETCH rejected: " + line; return false;
+        }
         auto lb = line.find('{');
         auto rb = line.find('}');
         if (lb != std::string::npos && rb != std::string::npos && rb > lb)
@@ -598,7 +357,7 @@ bool ImapClient::fetchRawEmlByUid(ImapSession& ses,
 
     if (literalSize == 0)
     {
-        err = "FETCH: no literal size";
+        err = "FETCH: no literal size: " + astra_mail::net::lastError();
         return false;
     }
 
@@ -608,19 +367,20 @@ bool ImapClient::fetchRawEmlByUid(ImapSession& ses,
 
     while (readTotal < literalSize)
     {
-        ssize_t n = ::recv(ses.sock,
+        ssize_t n = astra_mail::net::receive(ses.sock,
                            &outRawEml[readTotal],
                            literalSize - readTotal,
-                           0);
+                           true);
         if (n <= 0)
         {
-            err = "FETCH body failed";
+            err = "FETCH body failed: " + astra_mail::net::lastError();
             return false;
         }
         readTotal += static_cast<size_t>(n);
     }
 
     // 3️⃣ Ждём OK именно по НАШЕМУ tag
+    astra_mail::net::beginResponse(ses.sock, astra_mail::net::settingsFor(ses.sock).imapCommandMs);
     while (recvLine(ses.sock, line))
     {
         if (line.rfind(tag + " OK", 0) == 0)
@@ -644,6 +404,8 @@ bool ImapClient::markSeenByUid(ImapSession& ses,
                                std::string& err)
 {
     err.clear();
+
+    if (!validUid(uid)) { err = "STORE: invalid UID"; return false; }
 
     // ⬇️ отправка с уникальным tag
     std::string tag =
@@ -688,8 +450,10 @@ bool ImapClient::searchUnreadUids(ImapSession& ses,
         {
             std::istringstream iss(line.substr(8));
             std::string uid;
-            while (iss >> uid)
+            while (iss >> uid) {
+                if (!validUid(uid)) { outUids.clear(); err = "SEARCH: invalid UID from server"; return false; }
                 outUids.push_back(uid);
+            }
         }
 
         // ⬇️ окончание команды — ТОЛЬКО по нашему tag
@@ -750,34 +514,10 @@ bool ImapClient::searchUnreadUids(ImapSession& ses,
     return true;
 }
 
-bool ImapClient::selectMailbox(ImapSession& ses,
-                               const std::string& folder,
-                               std::string& err)
+bool ImapClient::selectMailbox(ImapSession& ses, const std::string& folder, std::string& err)
 {
-    err.clear();
-
-    std::string cmd = "SELECT \"" + folder + "\"";
-    std::string tag = sendTagged(ses, cmd);
-
-    std::string line;
-    while (recvLine(ses.sock, line))
-    {
-        if (line.rfind(tag + " OK", 0) == 0)
-            return true;
-
-        if (line.rfind(tag + " NO", 0) == 0 ||
-            line.rfind(tag + " BAD", 0) == 0)
-        {
-            err = "SELECT failed: " + folder;
-            return false;
-        }
-    }
-
-    err = "SELECT: connection closed";
-    return false;
+    return imapSelect(ses, folder, err);
 }
-
-
 bool ImapClient::searchUnreadUids(const std::string &host, int port, const std::string &user, const std::string &pass,
                                   const std::vector<std::string> &folders, std::vector<std::string> &outUids,
                                   std::string &err) {
@@ -818,11 +558,12 @@ static bool recvExact(int sock, void* buf, size_t n)
     char* p = static_cast<char*>(buf);
     while (n > 0)
     {
-        int r = ::recv(sock, p, (int)n, 0);
+        int r = astra_mail::net::receive(sock, p, n, true);
         if (r <= 0) return false;
         p += r;
         n -= (size_t)r;
     }
+    astra_mail::net::beginResponse(sock, astra_mail::net::settingsFor(sock).imapCommandMs);
     return true;
 }
 
@@ -1006,7 +747,7 @@ bool ImapClient::listMailboxes(ImapSession& ses,
         }
     }
 
-    err = "LIST: connection closed";
+    err = "LIST failed: " + astra_mail::net::lastError();
     return false;
 }
 

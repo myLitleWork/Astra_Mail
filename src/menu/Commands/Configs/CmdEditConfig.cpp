@@ -1,3 +1,4 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdEditConfig.h"
 #include "Configs/Editor/EditorLauncher.h"
 #include "core/idle/IdleBackground.h"
@@ -17,6 +18,8 @@ namespace astra_mail
 
     CommandResult CmdEditConfig::execute()
     {
+        MailDataChangeScope change;
+        if (!mailCommandAllowed(change.allowed())) return CommandResult::Continue;
         // Внешний редактор блокирует текущий поток: пока он запущен — запрещаем idle-действия.
         IdleBackground::BusyGuard busy;
 

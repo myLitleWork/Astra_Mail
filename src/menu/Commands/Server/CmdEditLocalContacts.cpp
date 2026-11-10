@@ -1,3 +1,4 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdEditLocalContacts.h"
 
 #include "Configs/Editor/EditorLauncher.h"
@@ -15,6 +16,8 @@ namespace astra_mail
 
     CommandResult CmdEditLocalContacts::execute()
     {
+        MailDataChangeScope change;
+        if (!mailCommandAllowed(change.allowed())) return CommandResult::Continue;
         if (!astra_mail::ensureLocalContactsFile())
         {
             std::cout << "[EDIT][ERROR] Не удалось подготовить файл локальных контактов\n";

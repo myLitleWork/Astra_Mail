@@ -1,4 +1,6 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdExportUnreadToInbox.h"
+#include "core/mail/AccountAccess.h"
 #include "core/idle/IdleBackground.h"
 #include "CmdExportUnreadToFolders.h"
 #include "core/paths/AstraMailPaths.h"
@@ -14,6 +16,8 @@ namespace astra_mail
 {
     CommandResult CmdExportUnreadToInbox::execute()
     {
+        MailOperationScope operation(std::try_to_lock);
+        if (!mailCommandAllowed(operation.allowed())) return CommandResult::Continue;
         IdleBackground::BusyGuard busy;
         auto& tb = ThunderbirdSettings::instance();
         if (!tb.active().valid())

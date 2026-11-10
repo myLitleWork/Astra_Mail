@@ -1,280 +1,236 @@
 #include "SmtpClient.h"
+#include "SensitiveString.h"
 #include <netdb.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <cerrno>
 #include <cstdio>
+#include <memory>
 #include <utility>
-#include <vector>
 
-
-
-SmtpClient::SmtpClient(std::string  host, int port)
-        : host_(std::move(host)), port_(port) {}
-
-void SmtpClient::setCredentials(const std::string& user, const std::string& password)
-{
-    user_ = user;
-    pass_ = password;
+namespace {
+bool sendAll(int sock, const char* data, size_t size) {
+    return astra_mail::net::sendAll(sock, data, size);
 }
-bool SmtpClient::openSession(Session& ses, std::string& error)
-{
+bool validAddress(const std::string& address) {
+    if (address.empty() || address.size() > 512) return false;
+    for (unsigned char c : address)
+        if (c <= 32 || c == 127 || c == '<' || c == '>') return false;
+    return true;
+}
+// Normalize line endings and dot-stuff every line, including across fread boundaries.
+bool sendBody(int sock, FILE* file) {
+    std::string buffer;
+    bool start = true, cr = false;
+    auto flush = [&]() {
+        if (!sendAll(sock, buffer.data(), buffer.size())) return false;
+        buffer.clear(); return true;
+    };
+    auto newline = [&]() { buffer += "\r\n"; start = true; };
+    char chunk[8192];
+    size_t count;
+    while ((count = std::fread(chunk, 1, sizeof(chunk), file)) != 0) {
+        for (size_t i = 0; i < count; ++i) {
+            const char c = chunk[i];
+            if (cr) { newline(); cr = false; if (c == '\n') continue; }
+            if (c == '\r') { cr = true; continue; }
+            if (c == '\n') { newline(); continue; }
+            if (start && c == '.') buffer += '.';
+            buffer += c; start = false;
+            if (buffer.size() >= 16384 && !flush()) return false;
+        }
+        if (buffer.size() >= 8192 && !flush()) return false;
+    }
+    if (std::ferror(file)) return false;
+    if (cr || !start) newline();
+    return flush();
+}
+}
+
+SmtpClient::SmtpClient(std::string host, int port)
+    : host_(std::move(host)), port_(port) {}
+
+SmtpClient::~SmtpClient() { astra_mail::clearSensitiveString(pass_); }
+
+void SmtpClient::setCredentials(const std::string& user, const std::string& password) {
+    user_ = user; pass_ = password;
+}
+
+void SmtpClient::abortSession(Session& ses) {
+    ses.sock.reset(); ses.replyBuffer.clear();
+}
+
+bool SmtpClient::openSession(Session& ses, std::string& error) {
+    abortSession(ses);
+    error.clear();
     ses.sock = socketConnect(error);
-    if (ses.sock < 0)
-        return false;
-
+    if (ses.sock < 0) return false;
+    int code = 0;
     std::string reply;
-
-    recvResponse(ses.sock, reply);              // banner
-    sendLine(ses.sock, "EHLO astra");
-    recvResponse(ses.sock, reply);
-
-    sendLine(ses.sock, "AUTH LOGIN");
-    recvResponse(ses.sock, reply);
-
-    sendLine(ses.sock, base64(user_));
-    recvResponse(ses.sock, reply);
-
-    sendLine(ses.sock, base64(pass_));
-    recvResponse(ses.sock, reply);
-
-    return true;
-}
-
-void SmtpClient::closeSession(Session& ses)
-{
-    if (ses.sock >= 0)
-    {
-        sendLine(ses.sock, "QUIT");
-        close(ses.sock);
-        ses.sock = -1;
-    }
-}
-
-
-// ---------------- BASE64 ---------------------
-
-std::string SmtpClient::base64(const std::string& in)
-{
-    static const char* t =
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    std::string out;
-    int val = 0, valb = -6;
-
-    for (unsigned char c : in)
-    {
-        val = (val << 8) + c;
-        valb += 8;
-        while (valb >= 0)
-        {
-            out.push_back(t[(val >> valb) & 0x3F]);
-            valb -= 6;
+    auto step = [&](const char* stage, const std::string& command, int expected) {
+        reply.clear();
+        if ((!command.empty() && !sendLine(ses.sock, command)) ||
+            !recvResponse(ses, code, reply) || code != expected) {
+            error = std::string(stage) + ": " + (!astra_mail::net::lastError().empty() ? astra_mail::net::lastError() :
+                (reply.empty() ? "connection/protocol error" : reply));
+            abortSession(ses); return false;
         }
-    }
-    if (valb > -6)
-        out.push_back(t[((val << 8) >> (valb + 8)) & 0x3F]);
-
-    while (out.size() % 4)
-        out.push_back('=');
-
-    return out;
+        return true;
+    };
+    return step("Greeting", "", 220) && step("EHLO", "EHLO astra", 250) &&
+           step("AUTH", "AUTH LOGIN", 334) && step("AUTH user", base64(user_), 334) &&
+           step("AUTH password", base64(pass_), 235);
 }
 
-// ---------------- SOCKET ---------------------
-
-int SmtpClient::socketConnect(std::string& error)
-{
-    addrinfo hints{}, *res;
-
-    hints.ai_socktype = SOCK_STREAM;
-
-    if (getaddrinfo(host_.c_str(), std::to_string(port_).c_str(), &hints, &res) != 0)
-    {
-        error = "DNS resolution failed";
-        return -1;
-    }
-
-    int s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (s < 0)
-    {
-        error = "Cannot create socket";
-        freeaddrinfo(res);
-        return -1;
-    }
-
-    if (connect(s, res->ai_addr, res->ai_addrlen) != 0)
-    {
-        error = "Connect failed";
-        close(s);
-        freeaddrinfo(res);
-        return -1;
-    }
-
-    freeaddrinfo(res);
-    return s;
+void SmtpClient::closeSession(Session& ses) {
+    astra_mail::net::sendBestEffort(ses.sock, "QUIT\r\n");
+    abortSession(ses);
 }
 
-bool SmtpClient::sendLine(int s, const std::string& text)
-{
-    std::string t = text + "\r\n";
-    return send(s, t.c_str(), t.size(), 0) == (ssize_t)t.size();
+bool SmtpClient::sendLine(int sock, const std::string& line) {
+    const std::string wire = line + "\r\n";
+    return sendAll(sock, wire.data(), wire.size());
 }
 
-bool SmtpClient::recvResponse(int s, std::string& reply)
-{
-    char buf[2048];
-    ssize_t r = recv(s, buf, sizeof(buf)-1, 0);
-
-    if (r <= 0) return false;
-
-    buf[r] = 0;
-    reply = buf;
-    return true;
-}
-
-// ---------------- SEND MAIL ---------------------
-
-bool SmtpClient::sendMailFromFile(
-        const std::string& mimeFile,
-        const std::string& rcpt,
-        std::string& error)
-{
-    std::vector<std::string> rcpts;
-    rcpts.push_back(rcpt);
-    return sendMailFromFile(mimeFile, rcpts, error);
-}
-
-bool SmtpClient::sendMailFromFile(
-        const std::string& mimeFile,
-        const std::vector<std::string>& rcpts,
-        std::string& error)
-{
-    int s = socketConnect(error);
-    if (s < 0)
-        return false;
-
-    std::string reply;
-    recvResponse(s, reply);               // banner
-    sendLine(s, "EHLO astra");
-    recvResponse(s, reply);
-
-    sendLine(s, "AUTH LOGIN");
-    recvResponse(s, reply);
-    sendLine(s, base64(user_));
-    recvResponse(s, reply);
-    sendLine(s, base64(pass_));
-    recvResponse(s, reply);
-
-    if (rcpts.empty())
-    {
-        error = "No recipients provided";
-        sendLine(s, "QUIT");
-        close(s);
-        return false;
-    }
-
-    sendLine(s, "MAIL FROM:<" + user_ + ">");
-    recvResponse(s, reply);
-
-    for (const auto& rcpt : rcpts)
-    {
-        if (!sendLine(s, "RCPT TO:<" + rcpt + ">") || !recvResponse(s, reply))
-        {
-            error = "SMTP RCPT TO failed for: " + rcpt;
-            sendLine(s, "QUIT");
-            close(s);
+bool SmtpClient::recvResponse(Session& ses, int& code, std::string& reply, unsigned timeoutMs) {
+    code = 0; reply.clear();
+    astra_mail::net::beginResponse(ses.sock, timeoutMs ? timeoutMs : astra_mail::net::settingsFor(ses.sock).smtpCommandMs);
+    for (size_t lines = 0; lines < 128; ++lines) {
+        size_t end;
+        while ((end = ses.replyBuffer.find("\r\n")) == std::string::npos) {
+            if (ses.replyBuffer.size() > 8192) return false;
+            char buffer[2048];
+            const ssize_t n = astra_mail::net::receive(ses.sock, buffer, sizeof(buffer));
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) return false;
+            ses.replyBuffer.append(buffer, static_cast<size_t>(n));
+        }
+        const std::string line = ses.replyBuffer.substr(0, end);
+        ses.replyBuffer.erase(0, end + 2);
+        if (line.size() < 3 || line.size() > 8192 || reply.size() + line.size() > 65536)
             return false;
-        }
+        for (size_t i = 0; i < 3; ++i)
+            if (line[i] < '0' || line[i] > '9') return false;
+        const int current = (line[0]-'0')*100 + (line[1]-'0')*10 + line[2]-'0';
+        if (line[0] < '2' || line[0] > '5' || line[1] > '5' || (code && code != current) ||
+            (line.size() > 3 && line[3] != ' ' && line[3] != '-')) return false;
+        code = current;
+        if (!reply.empty()) reply += " | ";
+        reply += line;
+        if (line.size() == 3 || line[3] == ' ') return true;
     }
-
-
-    sendLine(s, "DATA");
-    recvResponse(s, reply);
-
-    // === ТЕЛО: читаем MIME-файл и шлём ===
-    FILE* f = fopen(mimeFile.c_str(), "rb");
-    if (!f)
-    {
-        error = "Cannot open MIME file";
-        close(s);
-        return false;
-    }
-
-    char buf[2048];
-    while (!feof(f))
-    {
-        size_t r = fread(buf, 1, sizeof(buf), f);
-        if (r > 0)
-            send(s, buf, r, 0);
-    }
-    fclose(f);
-
-    // конец DATA
-    sendLine(s, ".");
-    recvResponse(s, reply);
-
-    sendLine(s, "QUIT");
-    close(s);
-    return true;
+    return false;
 }
 
-
-bool SmtpClient::sendMailFromFile(Session& ses,
-                                  const std::string& mimeFile,
-                                  const std::string& rcpt,
-                                  std::string& error)
-{
-    std::vector<std::string> rcpts;
-    rcpts.push_back(rcpt);
-    return sendMailFromFile(ses, mimeFile, rcpts, error);
+astra_mail::net::Socket SmtpClient::socketConnect(std::string& error) {
+    return astra_mail::net::connectSocket(host_, port_, error);
 }
 
-bool SmtpClient::sendMailFromFile(Session& ses,
-                                  const std::string& mimeFile,
-                                  const std::vector<std::string>& rcpts,
-                                  std::string& error)
-{
-    int s = ses.sock;
+SmtpClient::DeliveryResult SmtpClient::deliver(Session& ses, const std::string& mimeFile,
+                                               const std::vector<std::string>& recipients) {
+    std::unique_ptr<FILE, decltype(&std::fclose)> file(std::fopen(mimeFile.c_str(), "rb"), &std::fclose);
+    return deliver(ses, file.get(), recipients);
+}
+
+SmtpClient::DeliveryResult SmtpClient::deliver(Session& ses, FILE* mime,
+                                               const std::vector<std::string>& recipients) {
+    DeliveryResult result;
+    result.pending = recipients;
+    if (ses.sock < 0 || recipients.empty() || !validAddress(user_)) {
+        result.detail = "SMTP session, sender or recipients are not valid"; return result;
+    }
+    for (const auto& address : recipients)
+        if (!validAddress(address)) { result.detail = "Invalid recipient address"; return result; }
+    if (!mime || ::fseeko(mime, 0, SEEK_SET) != 0) { result.detail = "Cannot read MIME stream"; return result; }
+    std::clearerr(mime);
+    int code = 0;
     std::string reply;
-    if (rcpts.empty())
-    {
-        error = "No recipients provided";
-        return false;
-    }
-
-    sendLine(s, "MAIL FROM:<" + user_ + ">");
-    recvResponse(s, reply);
-
-    for (const auto& rcpt : rcpts)
-    {
-        if (!sendLine(s, "RCPT TO:<" + rcpt + ">") || !recvResponse(s, reply))
-        {
-            error = "SMTP RCPT TO failed for: " + rcpt;
-            return false;
+    auto command = [&](const std::string& line, unsigned timeoutMs = 0) {
+        reply.clear();
+        if (!sendLine(ses.sock, line) || !recvResponse(ses, code, reply, timeoutMs)) {
+            result.transportFailed = true;
+            result.detail = "SMTP: " + (astra_mail::net::lastError().empty() ? std::string("connection/protocol error") : astra_mail::net::lastError());
+            abortSession(ses); return false;
         }
+        return true;
+    };
+    if (!command("MAIL FROM:<" + user_ + ">")) return result;
+    if (code / 100 != 2) { result.detail = "MAIL FROM: " + reply; abortSession(ses); return result; }
+    std::vector<std::string> accepted, rejected;
+    std::string rejections;
+    for (const auto& address : recipients) {
+        if (!command("RCPT TO:<" + address + ">")) return result;
+        if (code / 100 == 2) accepted.push_back(address);
+        else if (code >= 400 && code <= 599 && code != 421) {
+            rejected.push_back(address);
+            if (!rejections.empty()) rejections += "; ";
+            rejections += address + ": " + reply;
+        } else { result.detail = "RCPT TO: " + reply; abortSession(ses); return result; }
     }
-
-    sendLine(s, "DATA");
-    recvResponse(s, reply);
-
-    FILE* f = fopen(mimeFile.c_str(), "rb");
-    if (!f)
-    {
-        error = "Cannot open MIME file";
-        return false;
+    if (accepted.empty()) {
+        result.detail = rejections;
+        abortSession(ses); return result;
     }
-
-    char buf[2048];
-    while (!feof(f))
-    {
-        size_t r = fread(buf, 1, sizeof(buf), f);
-        if (r > 0)
-            send(s, buf, r, 0);
+    if (!command("DATA", astra_mail::net::settingsFor(ses.sock).smtpDataStartMs)) return result;
+    if (code != 354) { result.detail = "DATA: " + reply; abortSession(ses); return result; }
+    if (!sendBody(ses.sock, mime)) {
+        result.transportFailed = !astra_mail::net::lastError().empty();
+        result.detail = "MIME read/send failed before DATA terminator: " + astra_mail::net::lastError();
+        abortSession(ses); return result;
     }
-    fclose(f);
-
-    sendLine(s, ".");
-    recvResponse(s, reply);
-    return true;
+    // From the first terminator byte onward a disconnect may hide an accepted message.
+    result.pending = rejected;
+    result.unknown = accepted;
+    if (!command(".", astra_mail::net::settingsFor(ses.sock).smtpFinalMs)) {
+        result.detail = "DATA result unknown: " + astra_mail::net::lastError() + "; " + rejections;
+        return result;
+    }
+    if (code / 100 == 2) {
+        result.delivered = accepted; result.unknown.clear();
+        result.detail = rejections.empty() ? "SMTP accepted message" : rejections;
+    } else if (code >= 400 && code <= 599) {
+        result.pending = recipients; result.unknown.clear();
+        result.detail = "DATA rejected: " + reply;
+        abortSession(ses);
+    } else {
+        result.detail = "DATA result unknown: unexpected reply " + reply;
+        abortSession(ses);
+    }
+    return result;
 }
 
+bool SmtpClient::sendMailFromFile(Session& ses, const std::string& file,
+                                 const std::vector<std::string>& recipients, std::string& error) {
+    const auto result = deliver(ses, file, recipients);
+    error = result.detail;
+    return result.complete();
+}
+bool SmtpClient::sendMailFromFile(Session& ses, const std::string& file,
+                                 const std::string& recipient, std::string& error) {
+    return sendMailFromFile(ses, file, std::vector<std::string>{recipient}, error);
+}
+bool SmtpClient::sendMailFromFile(const std::string& file,
+                                 const std::vector<std::string>& recipients, std::string& error) {
+    Session ses;
+    if (!openSession(ses, error)) return false;
+    const bool ok = sendMailFromFile(ses, file, recipients, error);
+    closeSession(ses); return ok;
+}
+bool SmtpClient::sendMailFromFile(const std::string& file,
+                                 const std::string& recipient, std::string& error) {
+    return sendMailFromFile(file, std::vector<std::string>{recipient}, error);
+}
+
+std::string SmtpClient::base64(const std::string& input) {
+    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string output;
+    unsigned value = 0;
+    int bits = -6;
+    for (unsigned char c : input) {
+        value = (value << 8) | c; bits += 8;
+        while (bits >= 0) { output += table[(value >> bits) & 63]; bits -= 6; }
+    }
+    if (bits > -6) output += table[((value << 8) >> (bits + 8)) & 63];
+    while (output.size() % 4) output += '=';
+    return output;
+}

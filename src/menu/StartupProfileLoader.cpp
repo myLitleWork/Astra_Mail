@@ -9,6 +9,7 @@
 #include "UtilsFS/FsCompat.h"
 #include "Utils/ImapClient.h"
 #include "Utils/SmtpClient.h"
+#include "core/mail/AccountAccess.h"
 
 #include <iostream>
 
@@ -16,12 +17,17 @@ namespace astra_mail
 {
     bool pinMenu()
     {
+        AccountChangeScope change;
+        if (!change.allowed()) { std::cout << "Дождитесь завершения почтовой операции.\n"; return false; }
         auto& sm = SecretManager::instance();
         auto& tb = ThunderbirdSettings::instance();
+        const auto context = tb.secretContext();
+        if (context.empty()) return false;
+        tb.clearMailPassword();
 
         Menu menu("Безопасность");
 
-        if (sm.isInitialized())
+        if (sm.hasSecret(context) || sm.legacyAvailable(context))
         {
             menu.add(std::make_unique<CmdEnterPin>());
             menu.add(std::make_unique<CmdResetPin>());
@@ -35,7 +41,7 @@ namespace astra_mail
         menu.run();
 
         // ЕДИНСТВЕННЫЙ критерий успеха
-        return tb.hasMailPassword();
+        return std::cin.good() && tb.hasMailPassword();
     }
 
     bool tryLoadSavedProfile(TbProfile& outProfile)
@@ -54,7 +60,7 @@ namespace astra_mail
                     outProfile.active_account_id = local.accountId;
 
                     auto& tb = ThunderbirdSettings::instance();
-                    tb.loadFromLocalCache(outProfile, local);
+                    if (!tb.loadFromLocalCache(outProfile, local)) return false;
 
                     std::unordered_map<std::string, Contact> contacts;
                     std::unordered_map<std::string, std::vector<std::string>> mailingLists;
@@ -117,6 +123,7 @@ namespace astra_mail
 
         auto menu = menu::createThunderbirdProfilesMenu();
         menu->run();
+        if (!std::cin.good()) return false;
         std::cout << "[STARTUP] Вышли из меню выбора профилей...\n";
         auto& tb = ThunderbirdSettings::instance();
         const TbProfile& profile = tb.currentProfile();
@@ -143,6 +150,7 @@ namespace astra_mail
 
     bool checkServers()
     {
+        MailOperationScope operation;
         auto& tb = ThunderbirdSettings::instance();
 
         if (!tb.active().valid())
@@ -195,6 +203,7 @@ namespace astra_mail
 
     bool checkServersSilent()
     {
+        MailOperationScope operation;
         auto& tb = ThunderbirdSettings::instance();
         if (!tb.active().valid() || !tb.hasMailPassword())
             return false;

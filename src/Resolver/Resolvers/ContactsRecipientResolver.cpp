@@ -7,7 +7,7 @@
 namespace astra_mail
 {
     ContactsRecipientResolver::ContactsRecipientResolver(const ContactsManager& cm)
-            : contacts_(cm)
+            : contacts_(cm.snapshot())
     {}
 
     bool ContactsRecipientResolver::looksLikeEmail(const std::string& s)
@@ -64,7 +64,7 @@ namespace astra_mail
 
         // mailing list takes precedence (циркулярная запись)
         {
-            const auto& lists = contacts_.mailingLists();
+            const auto& lists = contacts_.mailingLists;
             auto it = lists.find(key);
             if (it != lists.end() && !it->second.empty())
             {
@@ -78,7 +78,7 @@ namespace astra_mail
             }
         }
 
-        for (const auto& it : contacts_.contacts())
+        for (const auto& it : contacts_.contacts)
         {
             const auto& c = it.second;
 

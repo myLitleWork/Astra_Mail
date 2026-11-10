@@ -3,6 +3,9 @@
 #include "SecretManager.h"
 #include "core/thunderbird/ThunderbirdSettings.h"
 #include "Utils/Utils.h"
+#include "Utils/SensitiveString.h"
+#include "Utils/SecretInput.h"
+#include "core/mail/AccountAccess.h"
 
 #include <iostream>
 #include <string>
@@ -10,41 +13,39 @@
 namespace astra_mail
 {
 
-    static bool readHiddenOrPlain(const char* prompt, std::string& out)
-    {
-        std::cout << prompt;
-
-        // если у тебя есть скрытый ввод — используй его
-        // иначе временно обычный ввод
-        // return my::readHidden(out);
-
-        std::getline(std::cin >> std::ws, out);
-        return !out.empty();
-    }
-
     CommandResult CmdResetPin::execute()
     {
+        AccountChangeScope change;
+        if (!change.allowed()) { std::cout << "Дождитесь завершения почтовой операции.\n"; return CommandResult::Continue; }
         auto& tb = ThunderbirdSettings::instance();
         auto& sm = SecretManager::instance();
+        const auto context = tb.secretContext();
+        if (context.empty()) { std::cout << "Сначала выберите аккаунт.\n"; return CommandResult::Continue; }
+        tb.clearMailPassword();
 
         std::string pass1, pass2;
         std::string pin1, pin2;
+        ClearSensitiveOnExit wipePass1{pass1}, wipePass2{pass2}, wipePin1{pin1}, wipePin2{pin2};
 
-        if (!readHiddenOrPlain("Введите новый пароль почты: ", pass1))
+        if (!readSecret("Введите новый пароль почты: ", pass1))
             return CommandResult::Continue;
 
-        if (!readHiddenOrPlain("Повторите пароль: ", pass2) || pass1 != pass2)
+        if (!readSecret("Повторите пароль: ", pass2) || pass1 != pass2)
         {
             std::cout << "Пароли не совпадают\n";
             my::pause();
             return CommandResult::Continue;
         }
 
-        std::cout << "Введите новый PIN: ";
-        std::getline(std::cin >> std::ws, pin1);
-
-        std::cout << "Повторите PIN: ";
-        std::getline(std::cin >> std::ws, pin2);
+        if (!readSecret("Введите новый PIN (без пробелов): ", pin1, 1024))
+            return CommandResult::Continue;
+        if (!validNewPin(pin1)) {
+            std::cout << "Новый PIN не должен содержать пробелы или управляющие символы.\n";
+            my::pause();
+            return CommandResult::Continue;
+        }
+        if (!readSecret("Повторите PIN: ", pin2, 1024))
+            return CommandResult::Continue;
 
         if (pin1 != pin2)
         {
@@ -54,14 +55,14 @@ namespace astra_mail
         }
 
         // перезапись секретов через твой интерфейс
-        if (!sm.store(pass1, pin1))
+        if (!sm.store(context, pass1, pin1))
         {
             std::cout << "Не удалось сохранить секреты\n";
             my::pause();
             return CommandResult::Continue;
         }
 
-        tb.setMailPassword(pass1);
+        if (!tb.setMailPassword(pass1)) return CommandResult::Continue;
 
         std::cout << "PIN и пароль обновлены.\n";
         my::pause();

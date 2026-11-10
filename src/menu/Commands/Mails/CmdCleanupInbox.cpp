@@ -1,3 +1,4 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdCleanupInbox.h"
 #include "core/paths/AstraMailPaths.h"
 #include "Utils/Confirm.h"
@@ -9,6 +10,8 @@ namespace astra_mail
 {
     CommandResult CmdCleanupInbox::execute()
     {
+        MailDataChangeScope change;
+        if (!mailCommandAllowed(change.allowed())) return CommandResult::Continue;
         const std::string warning =
                 "ВНИМАНИЕ!\n"
                 "Будут безвозвратно удалены ВСЕ письма из папки входящих.\n"

@@ -1,3 +1,4 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdExportLocalInboxToFlash.h"
 #include "CmdExportUnreadToFolders.h"
 #include "core/idle/IdleBackground.h"
@@ -23,6 +24,8 @@ namespace astra_mail
 
     CommandResult CmdExportLocalInboxToFlash::execute()
     {
+        MailOperationScope operation(std::try_to_lock);
+        if (!mailCommandAllowed(operation.allowed())) return CommandResult::Continue;
         IdleBackground::BusyGuard busy;
         bool ok = CmdExportUnreadToFolders::runExportFromLocalInbox(
                 mountPoint_, strategy_, &std::cout);

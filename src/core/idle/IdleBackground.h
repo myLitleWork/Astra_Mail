@@ -16,12 +16,13 @@ namespace astra_mail
     {
     public:
         static IdleBackground& instance();
+        ~IdleBackground();
 
         void start();
         void stop();
         void resetTimer();
 
-        /** Пока хотя бы один guard активен, фоновый поток не запускает runActions(). */
+        /** Scheduling hint; the common mail gate provides mutual exclusion. */
         void enterBusy();
         void leaveBusy();
 
@@ -51,7 +52,7 @@ namespace astra_mail
         void showBackgroundMenu(size_t inboxCount, size_t outboxCount, const std::string& status) const;
 
         mutable std::mutex coutMutex_;
-        std::chrono::steady_clock::time_point lastActivity_;
+        std::atomic<int64_t> lastActivityMs_{0};
 
         std::atomic<bool> stop_{false};
         std::atomic<uint32_t> busyCount_{0};

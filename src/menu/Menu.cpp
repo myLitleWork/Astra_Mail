@@ -1,4 +1,5 @@
 #include "Menu.h"
+#include "Utils/ConsoleInput.h"
 #include "core/idle/IdleBackground.h"
 #include <thread>
 #include <chrono>
@@ -39,7 +40,7 @@ namespace astra_mail
 
     void Menu::run()
     {
-        while (true)
+        while (std::cin.good())
         {
             clearScreen();
 
@@ -63,6 +64,7 @@ namespace astra_mail
         printItems();
 
         auto cOpt = readChoice();
+        if (!std::cin.good()) return false;
         if (!cOpt)
         {
             if (wasBlankInput())
@@ -84,6 +86,7 @@ namespace astra_mail
         IdleBackground::instance().resetTimer();
 
         auto res = cmds_[c - 1]->execute();
+        if (!std::cin.good()) return false;
 
         if (res == CommandResult::ExitMenu)
             return false;   // выйти из текущего меню
@@ -111,7 +114,8 @@ namespace astra_mail
         std::cout.flush();
 
         std::string s;
-        if (!std::getline(std::cin, s))
+        lastInput_.clear();
+        if (!readConsoleLine(s))
             return std::experimental::nullopt;
 
         lastInput_ = s;

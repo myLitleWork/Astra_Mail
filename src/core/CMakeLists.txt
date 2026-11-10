@@ -13,8 +13,11 @@ set(CORE_CPP
         ${CMAKE_SOURCE_DIR}/src/core/mail/MailFolderReport.cpp
         ${CMAKE_SOURCE_DIR}/src/core/mail/MailFolderScanner.cpp
         ${CMAKE_SOURCE_DIR}/src/core/mail/MailSendPipeline.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/mail/MailDeliveryState.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/mail/MailNetworkSettings.cpp
 
         ${CMAKE_SOURCE_DIR}/src/core/mime/MimeFileBuilder.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/mime/MimeTemporaryFile.cpp
 
         ${CMAKE_SOURCE_DIR}/src/core/idle/IdleBackground.cpp
         ${CMAKE_SOURCE_DIR}/src/core/idle/IdleSettings.cpp

@@ -3,6 +3,7 @@
 //
 
 #include "CmdParseEmlFolder.h"
+#include "menu/MailCommandAccess.h"
 #include "UtilsFS/FsUtils.h"
 #include "Utils/Base64.h"
 #include "Utils/EmlParser.h"
@@ -115,6 +116,8 @@ namespace astra_mail {
 
     CommandResult CmdParseEmlFolder::execute()
     {
+        MailOperationScope operation(std::try_to_lock);
+        if (!mailCommandAllowed(operation.allowed())) return CommandResult::Continue;
         using namespace fsu;
         ensureDir(outDir_);
 

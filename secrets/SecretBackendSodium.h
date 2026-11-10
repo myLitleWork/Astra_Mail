@@ -10,8 +10,11 @@ public:
     SecretBackendSodium();
 
     bool isInitialized() const override;
-    bool store(const std::string& password,
+    bool hasSecret(const std::string& context) const override;
+    bool legacyAvailable(const std::string& context) const override;
+    bool migrateLegacy(const std::string& context, const std::string& pin) override;
+    bool store(const std::string& context, const std::string& password,
                const std::string& pin) override;
-    bool load(const std::string& pin,
+    bool load(const std::string& context, const std::string& pin,
               std::string& outPassword) override;
 };

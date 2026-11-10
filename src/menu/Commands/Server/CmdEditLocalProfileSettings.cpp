@@ -1,3 +1,4 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdEditLocalProfileSettings.h"
 
 #include "Configs/Editor/EditorLauncher.h"
@@ -16,6 +17,8 @@ namespace astra_mail
 
     CommandResult CmdEditLocalProfileSettings::execute()
     {
+        MailDataChangeScope change;
+        if (!mailCommandAllowed(change.allowed())) return CommandResult::Continue;
         if (!astra_mail::ensureLocalMailSettingsFile())
         {
             std::cout << "[EDIT][ERROR] Не удалось подготовить файл настроек локального профиля\n";

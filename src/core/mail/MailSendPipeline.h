@@ -7,6 +7,12 @@
 
 namespace astra_mail
 {
+    struct MailAttemptResult {
+        size_t confirmed = 0;
+        size_t unconfirmed = 0;
+        bool transportFailed = false;
+        std::string warning;
+    };
     class MailSendPipeline
     {
     public:
@@ -20,6 +26,7 @@ namespace astra_mail
         MailSendPipeline(const std::string& smtpHost, int smtpPort,
                          const std::string& imapHost, int imapPort,
                          const std::string& user, const std::string& pass);
+        ~MailSendPipeline();
 
         bool send(const MailFolderInfo& info, std::string& log, bool verbose = false);
 
@@ -27,10 +34,12 @@ namespace astra_mail
                   std::string& log,
                   SmtpClient& smtp,
                   SmtpClient::Session& ses,
-                  bool verbose = false);
+                  bool verbose = false,
+                  MailAttemptResult* result = nullptr);
 
 
     private:
+        std::string accountContext_;
         std::string smtpHost_, imapHost_;
         int smtpPort_, imapPort_;
         std::string user_, pass_;

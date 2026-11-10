@@ -21,6 +21,9 @@
 #include "menu/Commands/Flash+Mount/CmdCleanupGarbageMounts.h"
 #include "menu/Commands/Flash+Mount/CmdEnableUsbMount.h"
 #include "menu/Commands/Server/CmdScanThunderbirdProfiles.h"
+#include "menu/Commands/Mails/CmdReviewDelivery.h"
+#include "menu/Commands/StartUpMenu/CmdUnlockAccount.h"
+#include "core/mail/AccountAccess.h"
 #include "Utils/Utils.h"
 #include "menu/Commands/Server/CmdApplyThunderbirdAccount.h"
 #include "menu/Commands/Server/CmdCheckServers.h"
@@ -281,6 +284,11 @@ namespace astra_mail::menu
 
     std::unique_ptr<Menu> createFlashMenu(FlashContext ctx)
     {
+        MailOperationScope operation(std::try_to_lock);
+        if (!operation.allowed()) {
+            auto menu = std::make_unique<Menu>(mailBusyMessage());
+            menu->add(std::make_unique<CmdBack>()); return menu;
+        }
         FlashDriveScanner scanner;
         scanner.scan();
 
@@ -342,9 +350,19 @@ namespace astra_mail::menu
 
                     const auto& active = ts.active();
                     const auto& imap   = ts.imapServers().at(active.imapServerId);
+                    const auto accountContext = ts.secretContext();
 
                     menu->add(std::make_unique<CmdOpenMenu>(
                             [=, &ts]() {
+                                MailOperationScope operation(std::try_to_lock);
+                                if (!operation.allowed()) {
+                                    auto menu = std::make_unique<Menu>(mailBusyMessage());
+                                    menu->add(std::make_unique<CmdBack>()); return menu;
+                                }
+                                if (ts.secretContext() != accountContext || !ts.hasMailPassword()) {
+                                    auto locked = std::make_unique<Menu>("Аккаунт изменён. Откройте экспорт заново после ввода PIN.");
+                                    locked->add(std::make_unique<CmdBack>()); return locked;
+                                }
                                 return buildExportMenu(
                                         "Экспорт по темам",
                                         ExportMode::BySubject,
@@ -359,6 +377,15 @@ namespace astra_mail::menu
 
                     menu->add(std::make_unique<CmdOpenMenu>(
                             [=, &ts]() {
+                                MailOperationScope operation(std::try_to_lock);
+                                if (!operation.allowed()) {
+                                    auto menu = std::make_unique<Menu>(mailBusyMessage());
+                                    menu->add(std::make_unique<CmdBack>()); return menu;
+                                }
+                                if (ts.secretContext() != accountContext || !ts.hasMailPassword()) {
+                                    auto locked = std::make_unique<Menu>("Аккаунт изменён. Откройте экспорт заново после ввода PIN.");
+                                    locked->add(std::make_unique<CmdBack>()); return locked;
+                                }
                                 return buildExportMenu(
                                         "Экспорт по типам вложений",
                                         ExportMode::ByExtension,
@@ -425,6 +452,7 @@ namespace astra_mail::menu
         );
 
         menu->add(std::make_unique<CmdShowLocalProfileSettings>());
+        menu->add(std::make_unique<CmdUnlockAccount>());
         menu->add(std::make_unique<CmdShowLocalContacts>());
 
         menu->add(std::make_unique<CmdEditConfig>(
@@ -582,7 +610,8 @@ namespace astra_mail::menu
 
         if (!tb.load(profile.path + "/prefs.js"))
         {
-            menu->add(std::make_unique<CmdInfo>("Ошибка загрузки prefs.js", config::defaults::tbPrefsLoadError()));
+            menu->add(std::make_unique<CmdInfo>("Профиль не открыт",
+                "Дождитесь завершения почтовой операции и проверьте доступность prefs.js."));
             menu->add(std::make_unique<CmdBack>());
             return menu;
         }
@@ -617,6 +646,7 @@ namespace astra_mail::menu
 
         menu->add(std::make_unique<CmdViewOutboxMails>());
         menu->add(std::make_unique<CmdSendMailsFromOutbox>());
+        menu->add(std::make_unique<CmdReviewDelivery>());
         menu->add(std::make_unique<CmdCleanupOutbox>());
         menu->add(std::make_unique<CmdBack>());
 

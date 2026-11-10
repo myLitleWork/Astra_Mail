@@ -1,3 +1,4 @@
+#include "Utils/ConsoleInput.h"
 #include "CmdEnableUsbMount.h"
 #include "UtilsFS/FsCompat.h"
 
@@ -48,7 +49,7 @@ namespace astra_mail
     {
         std::cout << "\nНажмите Enter...";
         std::string s;
-        std::getline(std::cin, s);
+        readConsoleLine(s);
     }
 
     bool CmdEnableUsbMount::askYesNo(const std::string& prompt)
@@ -57,7 +58,7 @@ namespace astra_mail
         {
             std::cout << prompt << " (y/n): ";
             std::string s;
-            std::getline(std::cin, s);
+            if (!readConsoleLine(s)) return false;
             if (s == "y" || s == "Y" || s == "д" || s == "Д") return true;
             if (s == "n" || s == "N" || s == "н" || s == "Н") return false;
         }

@@ -1,7 +1,10 @@
+#include "menu/MailCommandAccess.h"
 #include "CmdSendMailsFromPath.h"
+#include "core/mail/AccountAccess.h"
 #include "core/mail/MailFolderScanner.h"
 #include "core/mail/MailFolderReport.h"
 #include "core/mail/MailSendPipeline.h"
+#include "core/mail/MailDeliveryState.h"
 #include "Utils/Utils.h"
 #include "core/thunderbird/ThunderbirdSettings.h"
 #include "Resolver/Resolvers/ContactsRecipientResolver.h"
@@ -191,6 +194,8 @@ namespace astra_mail
 
     CommandResult CmdSendMailsFromPath::execute()
         {
+        MailOperationScope operation(std::try_to_lock);
+        if (!mailCommandAllowed(operation.allowed())) return CommandResult::Continue;
 
             std::string mountPoint = path_;
 
@@ -213,6 +218,14 @@ namespace astra_mail
 
             for (auto& mail : flashResult.mails)
             {
+                // Preserve the payload associated with existing per-recipient receipts.
+                if (fs::exists(MailDeliveryState::path(rootPath / mail.recipient)))
+                {
+                    std::cout << "[ПРОПУЩЕНО] " << mail.recipient
+                              << ": в исходящих уже есть письмо с результатами отправки. "
+                                 "Новые файлы оставлены на флешке.\n";
+                    continue;
+                }
                 fs::path newFolder = moveMailFolderToOutbox_1to1(
                         mail.folderPath,
                         rootPath,
@@ -229,8 +242,8 @@ namespace astra_mail
                 locals.push_back(local);
             }
 
-            std::cout << "\nВсе письма перемещены в локальную папку:\n"
-                      << path_ << "\n"
+            std::cout << "\nПеремещено писем: " << locals.size() << " из " << flashResult.mails.size()
+                      << ". Локальная папка:\n" << rootPath.string() << "\n"
                       << "Флешку можно извлечь.\n";
 
             auto localResult = scanner.scanMount(rootPath);
@@ -247,23 +260,16 @@ namespace astra_mail
         SmtpClient::Session ses;
         std::string err;
 
-        if (!smtp.openSession(ses, err))
-        {
-            std::cout << "\n[SMTP] Не удалось подключиться к серверу: " << err << "\n"
-                      << "Письма сохранены в локальную папку исходящих.\n"
-                      << "Они будут отправлены автоматически при восстановлении соединения.\n";
-            my::pause();
-            return CommandResult::ExitMenu;
-        }
-
         for (auto& mail : localResult.mails)
         {
+            if (net::stopping()) break;
             std::cout << "\n[ОТПРАВКА] " << mail.recipient << " ...";
             std::cout.flush();
 
             std::string log;
 
-            bool ok = pipe.send(mail, log, smtp, ses);
+            MailAttemptResult attempt;
+            bool ok = pipe.send(mail, log, smtp, ses, false, &attempt);
 
             std::cout << "\r";
 
@@ -274,10 +280,12 @@ namespace astra_mail
             }
             else
             {
-                std::cout << "[НЕ ОТПРАВЛЕНО] " << mail.recipient << " ✗    ";
+                std::cout << "[ОСТАЛОСЬ В ИСХОДЯЩИХ] " << mail.recipient << "    ";
             }
+            std::cout << "\n" << log << "\n";
 
             std::cout.flush();
+            if (attempt.transportFailed) break;
         }
 
         smtp.closeSession(ses);
