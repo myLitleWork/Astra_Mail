@@ -1,0 +1,2 @@
+#pragma once
+#define ASTRA_MAIL_APP_VERSION "@ASTRA_MAIL_APP_VERSION@"

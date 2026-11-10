@@ -3,6 +3,7 @@
 //
 
 #include "MenuCreator.h"
+#include "AstraMailVersion.h"
 #include "Utils/FlashDriveScanner.h"
 #include "menu/Commands/Mails/CmdViewFlashMails.h"
 #include "menu/Commands/Mails/CmdSendMailsFromPath.h"
@@ -201,7 +202,7 @@ namespace astra_mail::menu
 
     std::unique_ptr<Menu> createMainMenu()
     {
-        auto menu = std::make_unique<Menu>("Основное меню Astra_Mail_v3.3", true);
+        auto menu = std::make_unique<Menu>(std::string("Основное меню Astra_Mail_v") + ASTRA_MAIL_APP_VERSION, true);
 
         menu->add(
                 std::make_unique<CmdOpenMenu>(

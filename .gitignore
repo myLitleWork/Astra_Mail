@@ -32,3 +32,6 @@ utf8proc-*.zip
 
 # если не хочешь игнорировать src/
 !src/
+
+# Canonical release runs and packages (never runtime data in Git).
+out/

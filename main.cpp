@@ -1,4 +1,5 @@
 #include "menu/MenuCreator.h"
+#include "AstraMailVersion.h"
 #include "core/thunderbird/ThunderbirdSettings.h"
 #include "menu/StartupProfileLoader.h"
 #include "core/idle/IdleBackground.h"
@@ -51,9 +52,13 @@ static int inputExitCode()
 }
 
 
-int main()
+int main(int argc, char** argv)
 {
     using namespace astra_mail;
+    if (argc == 2 && std::string(argv[1]) == "--version") {
+        std::cout << ASTRA_MAIL_APP_VERSION << "\n";
+        return 0;
+    }
     setlocale(LC_ALL, "");
 
     config::ensureIdleSettings(false);
