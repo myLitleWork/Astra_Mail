@@ -1,7 +1,8 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param([ValidatePattern('^[A-Za-z0-9][A-Za-z0-9_.@-]*$')][string]$SshHost = 'astra16',
-      [string]$CloudRoot, [switch]$SkipCloudPublish, [switch]$SkipVersionBump)
+      [string]$CloudRoot, [switch]$SkipCloudPublish, [switch]$SkipVersionBump,
+      [switch]$SkipTests)
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'AstraMailRelease.ps1')
@@ -38,7 +39,8 @@ try {
     $null = New-Item -ItemType Directory -Path $local
     $head = Invoke-AstraMailNative -File git -Arguments @('-C',$project,'-c',"safe.directory=$($project.Replace('\','/'))",'rev-parse','HEAD') -Capture
     $status = Invoke-AstraMailNative -File git -Arguments @('-C',$project,'-c',"safe.directory=$($project.Replace('\','/'))",'status','--porcelain') -Capture
-    $request = [pscustomobject]@{ Version = $version.Version; Head = $head; Dirty = [bool]$status; InputSha256 = $inputs.InputSha256 }
+    $request = [pscustomobject]@{ Version = $version.Version; Head = $head; Dirty = [bool]$status; InputSha256 = $inputs.InputSha256; SkipTests = [bool]$SkipTests }
+    if ($SkipTests) { Write-Warning 'Tests skipped by explicit request; the package manifest will record this.' }
     Write-AstraMailJson (Join-Path $local 'input-state.json') $inputs
     Write-AstraMailJson (Join-Path $local 'build-request.json') $request
     $names = @($inputs.Files | ForEach-Object { $_.Path }) + @('app-version.json')
@@ -56,7 +58,7 @@ try {
     Invoke-AstraMailNative -File ssh -Arguments @('-o','BatchMode=yes',$SshHost,$command)
     Invoke-AstraMailNative -File scp -Arguments @("${SshHost}:$remote/artifacts.zip",(Join-Path $local 'artifacts.zip'))
     Expand-AstraMailArtifacts (Join-Path $local 'artifacts.zip') $local
-    $package = & (Join-Path $PSScriptRoot 'New-AstraMailPackage.ps1') -PackageDirectory (Join-Path $local 'package') -ExpectedVersion $version.Version -ExpectedInputSha256 $inputs.InputSha256 -CloudRoot $CloudRoot -SkipCloudPublish:$SkipCloudPublish
+    $package = & (Join-Path $PSScriptRoot 'New-AstraMailPackage.ps1') -PackageDirectory (Join-Path $local 'package') -ExpectedVersion $version.Version -ExpectedInputSha256 $inputs.InputSha256 -CloudRoot $CloudRoot -SkipCloudPublish:$SkipCloudPublish -SkipTests:$SkipTests
     foreach ($path in @($package.PackageDirectory,$package.PackagedExe)) {
         if (!(Test-Path -LiteralPath $path)) { throw "Missing returned release artifact: $path" }
     }
@@ -70,7 +72,8 @@ try {
         $transport = Join-Path $local 'published-verify.zip'
         [IO.File]::Copy($package.ZipPath,$transport)
         Invoke-AstraMailNative -File scp -Arguments @($transport,"${SshHost}:$remote/published-verify.zip")
-        $command = "cd '$remote' && LC_ALL=C.UTF-8 python3 -m zipfile -e published-verify.zip published-verify && sh published-verify/Verify-Package.sh && build/release_csv_driver published-verify/contacts-import-example.csv"
+        $command = "cd '$remote' && LC_ALL=C.UTF-8 python3 -m zipfile -e published-verify.zip published-verify && sh published-verify/Verify-Package.sh"
+        if (!$SkipTests) { $command += ' && build/release_csv_driver published-verify/contacts-import-example.csv' }
         Invoke-AstraMailNative -File ssh -Arguments @('-o','BatchMode=yes',$SshHost,$command)
         $package | Add-Member NoteProperty ArchiveVerifiedOnTarget $true
     }

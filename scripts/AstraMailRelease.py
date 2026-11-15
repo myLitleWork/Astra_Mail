@@ -35,6 +35,8 @@ def require(value, text):
 
 
 request = read_json(os.path.join(run, 'build-request.json'))
+skip_tests = request.get('SkipTests', False)
+require(isinstance(skip_tests, bool), 'SkipTests must be boolean')
 inputs = read_json(os.path.join(run, 'input-state.json'))
 version = read_json(os.path.join(source, 'app-version.json'))
 actual_version = '{}.{}.{}'.format(version['major'], version['minor'], version['patch'])
@@ -49,13 +51,15 @@ if mode == 'verify':
         require(sha(os.path.join(source, rel)) == item['Sha256'], 'source mismatch: '+rel)
         lines.append(rel+'  '+item['Sha256'])
     require(hashlib.sha256(('\n'.join(lines)+'\n').encode('utf-8')).hexdigest() == inputs['InputSha256'], 'fingerprint mismatch')
-    subprocess.check_call([sys.executable, os.path.join(source, 'scripts/Sync-AstraMailHelp.py'), '--check'])
-    subprocess.check_call([sys.executable, os.path.join(source, 'scripts/Test-AstraMailTutorials.py')])
+    if not skip_tests:
+        subprocess.check_call([sys.executable, os.path.join(source, 'scripts/Sync-AstraMailHelp.py'), '--check'])
+        subprocess.check_call([sys.executable, os.path.join(source, 'scripts/Test-AstraMailTutorials.py')])
     print('SOURCE_INPUTS_VERIFIED={}'.format(len(lines)), flush=True)
 elif mode == 'prepare':
-    with open(os.path.join(run, 'native-tests.log'), encoding='utf-8') as file:
-        results = re.findall(r'AM\d+_NATIVE_CHECKS=(\d+)/(\d+)', file.read())
-    require(len(results) == 8 and sum(int(a) for a, b in results) == 474 and all(a == b for a, b in results), 'native regressions incomplete')
+    if not skip_tests:
+        with open(os.path.join(run, 'native-tests.log'), encoding='utf-8') as file:
+            results = re.findall(r'AM\d+_NATIVE_CHECKS=(\d+)/(\d+)', file.read())
+        require(len(results) == 8 and sum(int(a) for a, b in results) == 474 and all(a == b for a, b in results), 'native regressions incomplete')
     binary = os.path.join(build, 'AstraMail')
     version_home = os.path.join(run, 'version-home')
     os.mkdir(version_home)
@@ -68,17 +72,19 @@ elif mode == 'prepare':
     libs = sorted(glob.glob(os.path.join(build, '*.a')) + glob.glob(os.path.join(build, 'src/*/*.a')))
     require(len(libs) == 8, 'missing app libraries')
     csv_driver = os.path.join(build, 'release_csv_driver')
-    subprocess.check_call(['g++', '-std=gnu++17', '-I'+source, '-I'+os.path.join(source, 'src'),
-                           '-I'+os.path.join(source, 'secrets'), os.path.join(source, 'tests/release_csv_driver.cpp'),
-                           '-Wl,--start-group']+libs+['-Wl,--end-group', '-lsodium', '-lstdc++fs', '-ldl', '-pthread', '-no-pie', '-o', csv_driver])
     payload = os.path.join(source, 'deployment/AstraMailPortable')
-    subprocess.check_call([csv_driver, os.path.join(payload, 'contacts-import-example.csv')])
+    if not skip_tests:
+        subprocess.check_call(['g++', '-std=gnu++17', '-I'+source, '-I'+os.path.join(source, 'src'),
+                               '-I'+os.path.join(source, 'secrets'), os.path.join(source, 'tests/release_csv_driver.cpp'),
+                               '-Wl,--start-group']+libs+['-Wl,--end-group', '-lsodium', '-lstdc++fs', '-ldl', '-pthread', '-no-pie', '-o', csv_driver])
+        subprocess.check_call([csv_driver, os.path.join(payload, 'contacts-import-example.csv')])
     os.mkdir(package)
     shutil.copy2(binary, package)
     for name in ['Run-AstraMail.sh', 'Verify-Package.sh', 'contacts-import-example.csv', 'README.md']:
         shutil.copy2(os.path.join(payload, name), package)
     shutil.copytree(os.path.join(source, 'tutorials'), os.path.join(package, 'tutorials'))
-    subprocess.check_call([sys.executable, os.path.join(source, 'scripts/Test-AstraMailTutorials.py'), package])
+    if not skip_tests:
+        subprocess.check_call([sys.executable, os.path.join(source, 'scripts/Test-AstraMailTutorials.py'), package])
     installer = os.path.join(source, 'scripts/install_astramail.sh')
     # Installation behavior is tested on synthetic HOME after finalization.
     subprocess.check_call(['bash', '-n', installer])
@@ -97,8 +103,12 @@ elif mode == 'prepare':
                        ('/usr/share/doc/libstdc++6/copyright', 'gcc-runtime.txt')]:
         shutil.copy2(path, os.path.join(package, 'licenses', name))
 elif mode == 'finalize':
-    ui = read_json(os.path.join(run, 'packaged-tests.json'))
-    require(ui['packagedUiCsvImport'] and ui['contacts'] == 3 and ui['cleanExit'], 'packaged UI gate failed')
+    if skip_tests:
+        with open(os.path.join(run, 'packaged-tests.json'), 'w', encoding='utf-8') as file:
+            json.dump({'testsSkipped': True, 'skipReason': 'explicit-user-request'}, file)
+    else:
+        ui = read_json(os.path.join(run, 'packaged-tests.json'))
+        require(ui['packagedUiCsvImport'] and ui['contacts'] == 3 and ui['cleanExit'], 'packaged UI gate failed')
     entries = []
     for root, dirs, files in os.walk(package):
         for name in sorted(files):
@@ -110,9 +120,13 @@ elif mode == 'finalize':
                 'configuration': 'Release', 'architecture': 'x86_64', 'platform': 'Astra Linux 1.6',
                 'createdUtc': datetime.datetime.utcnow().isoformat()+'Z', 'containsLocalSettings': False,
                 'source': {'head': request['Head'], 'dirty': request['Dirty'], 'inputSha256': inputs['InputSha256'], 'inputCount': len(inputs['Files'])},
-                'validation': {'nativeChecks': 474, 'csvSampleContacts': 3, 'packagedUiCsvImport': True,
-                               'versionFlag': True, 'elf64': True, 'isolatedInstaller': True,
-                               'installedUiCsvImport': True}, 'files': entries}
+                'validation': {'nativeChecks': 0 if skip_tests else 474,
+                               'csvSampleContacts': 0 if skip_tests else 3,
+                               'packagedUiCsvImport': not skip_tests,
+                               'versionFlag': True, 'elf64': True, 'isolatedInstaller': not skip_tests,
+                               'installedUiCsvImport': not skip_tests,
+                               'testsSkipped': skip_tests,
+                               'skipReason': 'explicit-user-request' if skip_tests else None}, 'files': entries}
     path = os.path.join(package, 'package-manifest.json')
     with open(path, 'w', encoding='utf-8') as file:
         json.dump(manifest, file, ensure_ascii=False, indent=2, sort_keys=True)
@@ -124,10 +138,13 @@ elif mode == 'finalize':
     subprocess.check_call(['sh', os.path.join(package, 'Verify-Package.sh')])
     installer_log = os.path.join(run, 'installer-tests.log')
     with open(installer_log, 'w', encoding='utf-8') as log:
-        for suite in ['installer', 'installed']:
-            subprocess.check_call(['sudo', '-n', 'unshare', '-m', '-n', 'sh',
-                                   os.path.join(source, 'scripts/Test-AstraMailRelease.sh'), run, suite],
-                                  stdout=log, stderr=subprocess.STDOUT)
+        if skip_tests:
+            log.write('Installer and installed UI tests skipped by explicit request\n')
+        else:
+            for suite in ['installer', 'installed']:
+                subprocess.check_call(['sudo', '-n', 'unshare', '-m', '-n', 'sh',
+                                       os.path.join(source, 'scripts/Test-AstraMailRelease.sh'), run, suite],
+                                      stdout=log, stderr=subprocess.STDOUT)
     with open(installer_log, encoding='utf-8') as log:
         print(log.read(), end='', flush=True)
     print('PACKAGE_VERIFIED_FILES={}'.format(len(entries)+2), flush=True)

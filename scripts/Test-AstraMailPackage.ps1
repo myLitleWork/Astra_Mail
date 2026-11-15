@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$PackageDirectory,
       [Parameter(Mandatory)][string]$ExpectedVersion,
-      [Parameter(Mandatory)][string]$ExpectedInputSha256)
+      [Parameter(Mandatory)][string]$ExpectedInputSha256,
+      [switch]$AllowSkippedTests)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'AstraMailRelease.ps1')
 $base = (Resolve-Path -LiteralPath $PackageDirectory).Path
@@ -10,6 +11,15 @@ $manifest = Get-Content -LiteralPath (Join-Path $base 'package-manifest.json') -
 if ($manifest.product -ne 'AstraMail' -or $manifest.version -ne $ExpectedVersion -or
     $manifest.source.inputSha256 -ne $ExpectedInputSha256 -or $manifest.configuration -ne 'Release' -or
     $manifest.architecture -ne 'x86_64' -or $manifest.containsLocalSettings -ne $false -or
+    $manifest.validation.versionFlag -ne $true -or $manifest.validation.elf64 -ne $true) { throw 'Package provenance/validation mismatch' }
+if ($manifest.validation.testsSkipped -eq $true) {
+    if (!$AllowSkippedTests -or $manifest.validation.skipReason -ne 'explicit-user-request' -or
+        $manifest.validation.nativeChecks -ne 0 -or $manifest.validation.csvSampleContacts -ne 0 -or
+        $manifest.validation.packagedUiCsvImport -ne $false -or
+        $manifest.validation.isolatedInstaller -ne $false -or
+        $manifest.validation.installedUiCsvImport -ne $false) { throw 'Skipped tests require explicit opt-in and accurate manifest evidence' }
+    Write-Warning 'Package tests were skipped by explicit request; verifying integrity and provenance only.'
+} elseif ($AllowSkippedTests -or
     $manifest.validation.nativeChecks -ne 474 -or $manifest.validation.csvSampleContacts -ne 3 -or
     $manifest.validation.packagedUiCsvImport -ne $true -or
     $manifest.validation.isolatedInstaller -ne $true -or

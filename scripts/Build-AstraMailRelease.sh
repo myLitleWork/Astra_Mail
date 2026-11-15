@@ -21,12 +21,21 @@ printf 'Configuring Release\n'
 (cd "$run/build" && cmake ../source -DCMAKE_BUILD_TYPE=Release -DWITH_SODIUM=ON > configure.log 2>&1)
 printf 'Building Release\n'
 cmake --build "$run/build" -- -j2 > "$run/build/build.log" 2>&1
-printf 'Running isolated native/TCP/PTY regressions\n'
-sudo -n unshare -m -n sh "$run/source/scripts/Test-AstraMailRelease.sh" "$run" regression > "$run/native-tests.log" 2>&1
-grep 'NATIVE_CHECKS=' "$run/native-tests.log"
+skip_tests=$(python3 -c 'import json,sys; print(1 if json.load(open(sys.argv[1])).get("SkipTests", False) else 0)' "$run/build-request.json")
+if [ "$skip_tests" = 1 ]; then
+    printf 'Tests skipped by explicit request\n' | tee "$run/native-tests.log"
+else
+    printf 'Running isolated native/TCP/PTY regressions\n'
+    sudo -n unshare -m -n sh "$run/source/scripts/Test-AstraMailRelease.sh" "$run" regression > "$run/native-tests.log" 2>&1
+    grep 'NATIVE_CHECKS=' "$run/native-tests.log"
+fi
 printf 'Assembling portable package and checking CSV\n'
 python3 "$run/source/scripts/AstraMailRelease.py" prepare "$run"
-sudo -n unshare -m -n sh "$run/source/scripts/Test-AstraMailRelease.sh" "$run" package > "$run/packaged-tests.log" 2>&1
+if [ "$skip_tests" = 1 ]; then
+    printf 'Packaged UI/CSV tests skipped by explicit request\n' > "$run/packaged-tests.log"
+else
+    sudo -n unshare -m -n sh "$run/source/scripts/Test-AstraMailRelease.sh" "$run" package > "$run/packaged-tests.log" 2>&1
+fi
 cat "$run/packaged-tests.log"
 python3 "$run/source/scripts/AstraMailRelease.py" finalize "$run"
 printf 'Remote Release completed\n'
