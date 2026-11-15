@@ -20,7 +20,7 @@ elif [ "$2" = package ]; then
     sudo -u "$SUDO_USER" env HOME="$view/home-test" PYTHONPATH="$view/source/tests" \
         python3 "$view/source/scripts/Test-AstraMailPackaged.py" "$view/build" "$view/package" "$view/packaged-tests.json"
 else
-    for suite in am01 am02 am03 am06 am07 am08 am09 am11; do
+    for suite in am01 am02 am03 am06 am07 am08 am09 am11 config_bootstrap; do
         sudo -u "$SUDO_USER" env HOME="$view/home-test" \
             python3 "$view/source/tests/test_${suite}_native.py" "$view/build"
     done

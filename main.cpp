@@ -9,6 +9,7 @@
 
 #include <string>
 #include <cstdio>
+#include <exception>
 
 
 
@@ -61,10 +62,21 @@ int main(int argc, char** argv)
     }
     setlocale(LC_ALL, "");
 
-    config::ensureIdleSettings(false);
-    net::configure(loadMailNetworkSettings());
-    config::ensureLocalMailSettings(false);
-    config::ensureLocalContacts(false);
+    try
+    {
+        config::ensureSubjectRules(false);
+        config::ensureAttachmentGroups(false);
+        config::ensureOutgoingSubjectRules(false);
+        config::ensureIdleSettings(false);
+        net::configure(loadMailNetworkSettings()); // Also ensures network_settings.conf.
+        config::ensureLocalMailSettings(false);
+        config::ensureLocalContacts(false);
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "[Старт] Не удалось подготовить настройки: " << error.what() << "\n";
+        return 1;
+    }
 
     if (!runStartup()) return inputExitCode();
 

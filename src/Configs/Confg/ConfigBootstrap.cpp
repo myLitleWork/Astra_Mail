@@ -3,22 +3,52 @@
 #include "ConfigPaths.h"
 #include "ConfigDefaults.h"
 #include <fstream>
+#include <cerrno>
+#include <stdexcept>
+#include <system_error>
 
 namespace astra_mail::config
 {
-    void ensureFile(const fs::path& path, const char* content, bool force)
+    static void fileError(const fs::path& path, const char* operation,
+                          const std::error_code& ec = {})
     {
-        if (!force && fs::exists(path))
+        throw std::runtime_error("Конфигурация '" + path.string() + "': " + operation +
+                                 (ec ? ": " + ec.message() : ""));
+    }
+
+    static void ensureFile(const fs::path& path, const char* content, bool force)
+    {
+        std::error_code ec;
+        const bool exists = fs::exists(path, ec);
+        if (ec) fileError(path, "не удалось проверить файл", ec);
+        if (exists)
         {
-            std::error_code ec;
-            auto sz = fs::file_size(path, ec);
-            if (!ec && sz > 0)
-                return;
+            const bool regular = fs::is_regular_file(path, ec);
+            if (ec) fileError(path, "не удалось проверить тип файла", ec);
+            if (!regular) fileError(path, "ожидался обычный файл");
+            if (!force)
+            {
+                const auto size = fs::file_size(path, ec);
+                if (ec) fileError(path, "не удалось определить размер файла", ec);
+                if (size > 0) return;
+            }
         }
 
-        std::ofstream out(path);
-        if (out)
-            out << content;
+        if (!path.parent_path().empty())
+        {
+            fs::create_directories(path.parent_path(), ec);
+            if (ec) fileError(path, "не удалось создать каталог настроек", ec);
+        }
+
+        errno = 0;
+        std::ofstream out(path.string());
+        if (!out) fileError(path, "не удалось открыть файл для записи; проверьте права доступа",
+                            std::error_code(errno, std::generic_category()));
+        errno = 0;
+        out << content;
+        out.close();
+        if (!out) fileError(path, "не удалось записать файл; проверьте свободное место и права доступа",
+                            std::error_code(errno, std::generic_category()));
     }
 
     void ensureSubjectRules(bool force)
@@ -43,8 +73,6 @@ namespace astra_mail::config
 
     void ensureLocalMailSettings(bool force)
     {
-        std::error_code ec;
-        fs::create_directories(localMailSettings().parent_path(), ec);
         ensureFile(localMailSettings(), defaults::localMailSettings(), force);
     }
 
@@ -55,8 +83,6 @@ namespace astra_mail::config
 
     void ensureLocalContacts(bool force)
     {
-        std::error_code ec;
-        fs::create_directories(localContacts().parent_path(), ec);
         ensureFile(localContacts(), defaults::localContacts(), force);
     }
 }
