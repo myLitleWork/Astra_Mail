@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$PackageDirectory,
       [Parameter(Mandatory)][string]$ExpectedVersion,
@@ -11,8 +11,10 @@ if ($manifest.product -ne 'AstraMail' -or $manifest.version -ne $ExpectedVersion
     $manifest.source.inputSha256 -ne $ExpectedInputSha256 -or $manifest.configuration -ne 'Release' -or
     $manifest.architecture -ne 'x86_64' -or $manifest.containsLocalSettings -ne $false -or
     $manifest.validation.nativeChecks -ne 474 -or $manifest.validation.csvSampleContacts -ne 3 -or
-    $manifest.validation.packagedUiCsvImport -ne $true) { throw 'Package provenance/validation mismatch' }
-$required = @('AstraMail','Run-AstraMail.sh','Verify-Package.sh','contacts-import-example.csv','version.txt',
+    $manifest.validation.packagedUiCsvImport -ne $true -or
+    $manifest.validation.isolatedInstaller -ne $true -or
+    $manifest.validation.installedUiCsvImport -ne $true) { throw 'Package provenance/validation mismatch' }
+$required = @('AstraMail','Run-AstraMail.sh','Verify-Package.sh','contacts-import-example.csv','version.txt','scripts/install_astramail.sh',
               'lib/libsodium.so.18','licenses/libsodium.txt','licenses/gcc-runtime.txt')
 $declared = @{}
 foreach ($file in $manifest.files) {
@@ -25,7 +27,20 @@ foreach ($file in $manifest.files) {
         (Get-AstraMailSha256 $full) -cne $file.sha256) { throw "Package file mismatch: $rel" }
 }
 foreach ($rel in $required) { if (!$declared.ContainsKey($rel)) { throw "Missing package payload: $rel" } }
-if (@($declared.Keys | Where-Object { $_ -like 'tutorials/*.md' }).Count -lt 2) { throw 'Missing operator guides' }
+$project = Split-Path -Parent $PSScriptRoot
+$installer = 'scripts/install_astramail.sh'
+if ($declared[$installer] -cne (Get-AstraMailSha256 (Join-Path $project $installer))) { throw 'Installer differs from project source' }
+$tutorialRoot = Join-Path $project 'tutorials'
+foreach ($file in Get-ChildItem -LiteralPath $tutorialRoot -Recurse -File -Force) {
+    if ($file.Extension -notmatch '^\.(md|html?|doc|css)$') { continue }
+    $rel = 'tutorials/'+$file.FullName.Substring($tutorialRoot.Length+1).Replace('\','/')
+    if (!$declared.ContainsKey($rel) -or $declared[$rel] -cne (Get-AstraMailSha256 $file.FullName)) {
+        throw "Missing or changed operator document: $rel"
+    }
+}
+foreach ($guide in @('содержание.html','установка-и-обновление.html','первый-запуск-и-thunderbird.html','контакты-и-импорт.html','работа-с-письмами.html','настройки.html','фоновый-режим-и-связь.html','данные-и-восстановление.html','ошибки-и-диагностика.html','встроенная-справка.html','оформление.css')) {
+    if (!$declared.ContainsKey('tutorials/'+$guide)) { throw "Missing offline guide: $guide" }
+}
 if ((Get-Content -LiteralPath (Join-Path $base 'version.txt') -Raw).Trim() -ne $ExpectedVersion) { throw 'version.txt mismatch' }
 $binary = [IO.File]::OpenRead((Join-Path $base 'AstraMail'))
 try { $head = New-Object byte[] 5; if ($binary.Read($head,0,5) -ne 5 -or [BitConverter]::ToString($head) -ne '7F-45-4C-46-02') { throw 'Expected 64-bit ELF executable' } }

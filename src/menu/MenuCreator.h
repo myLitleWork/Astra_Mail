@@ -23,6 +23,14 @@ namespace astra_mail::menu
 
         std::unique_ptr<Menu> createSettingsMenu();
 
+        std::unique_ptr<Menu> createAccountSettingsMenu();
+        std::unique_ptr<Menu> createContactsSettingsMenu();
+        std::unique_ptr<Menu> createMailRulesSettingsMenu();
+        std::unique_ptr<Menu> createResetSettingsMenu();
+        std::unique_ptr<Menu> createTutorialsMenu();
+        std::unique_ptr<Menu> createUsbMenu();
+        std::unique_ptr<Menu> createUsbDrivesMenu();
+
         std::unique_ptr<Menu> createThunderbirdProfilesMenu();
 
 

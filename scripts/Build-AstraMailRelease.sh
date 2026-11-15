@@ -9,7 +9,7 @@ export HOME="$run/home-build"
 on_exit() {
     status=$?
     if [ "$status" != 0 ]; then
-        for log in "$run/build/configure.log" "$run/build/build.log" "$run/native-tests.log" "$run/packaged-tests.log"; do
+        for log in "$run/build/configure.log" "$run/build/build.log" "$run/native-tests.log" "$run/packaged-tests.log" "$run/installer-tests.log"; do
             if [ -f "$log" ]; then printf '\n%s\n' "$log"; tail -n 35 "$log"; fi
         done
     fi

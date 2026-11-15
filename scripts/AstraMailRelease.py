@@ -49,6 +49,8 @@ if mode == 'verify':
         require(sha(os.path.join(source, rel)) == item['Sha256'], 'source mismatch: '+rel)
         lines.append(rel+'  '+item['Sha256'])
     require(hashlib.sha256(('\n'.join(lines)+'\n').encode('utf-8')).hexdigest() == inputs['InputSha256'], 'fingerprint mismatch')
+    subprocess.check_call([sys.executable, os.path.join(source, 'scripts/Sync-AstraMailHelp.py'), '--check'])
+    subprocess.check_call([sys.executable, os.path.join(source, 'scripts/Test-AstraMailTutorials.py')])
     print('SOURCE_INPUTS_VERIFIED={}'.format(len(lines)), flush=True)
 elif mode == 'prepare':
     with open(os.path.join(run, 'native-tests.log'), encoding='utf-8') as file:
@@ -76,6 +78,12 @@ elif mode == 'prepare':
     for name in ['Run-AstraMail.sh', 'Verify-Package.sh', 'contacts-import-example.csv', 'README.md']:
         shutil.copy2(os.path.join(payload, name), package)
     shutil.copytree(os.path.join(source, 'tutorials'), os.path.join(package, 'tutorials'))
+    subprocess.check_call([sys.executable, os.path.join(source, 'scripts/Test-AstraMailTutorials.py'), package])
+    installer = os.path.join(source, 'scripts/install_astramail.sh')
+    # Installation behavior is tested on synthetic HOME after finalization.
+    subprocess.check_call(['bash', '-n', installer])
+    os.mkdir(os.path.join(package, 'scripts'))
+    shutil.copy2(installer, os.path.join(package, 'scripts/install_astramail.sh'))
     shutil.copy2(os.path.join(source, 'app-version.json'), package)
     with open(os.path.join(package, 'version.txt'), 'w') as file:
         file.write(actual_version+'\n')
@@ -103,7 +111,8 @@ elif mode == 'finalize':
                 'createdUtc': datetime.datetime.utcnow().isoformat()+'Z', 'containsLocalSettings': False,
                 'source': {'head': request['Head'], 'dirty': request['Dirty'], 'inputSha256': inputs['InputSha256'], 'inputCount': len(inputs['Files'])},
                 'validation': {'nativeChecks': 474, 'csvSampleContacts': 3, 'packagedUiCsvImport': True,
-                               'versionFlag': True, 'elf64': True}, 'files': entries}
+                               'versionFlag': True, 'elf64': True, 'isolatedInstaller': True,
+                               'installedUiCsvImport': True}, 'files': entries}
     path = os.path.join(package, 'package-manifest.json')
     with open(path, 'w', encoding='utf-8') as file:
         json.dump(manifest, file, ensure_ascii=False, indent=2, sort_keys=True)
@@ -113,13 +122,21 @@ elif mode == 'finalize':
             file.write(entry['sha256']+'  '+entry['path']+'\n')
         file.write(sha(path)+'  package-manifest.json\n')
     subprocess.check_call(['sh', os.path.join(package, 'Verify-Package.sh')])
+    installer_log = os.path.join(run, 'installer-tests.log')
+    with open(installer_log, 'w', encoding='utf-8') as log:
+        for suite in ['installer', 'installed']:
+            subprocess.check_call(['sudo', '-n', 'unshare', '-m', '-n', 'sh',
+                                   os.path.join(source, 'scripts/Test-AstraMailRelease.sh'), run, suite],
+                                  stdout=log, stderr=subprocess.STDOUT)
+    with open(installer_log, encoding='utf-8') as log:
+        print(log.read(), end='', flush=True)
     print('PACKAGE_VERIFIED_FILES={}'.format(len(entries)+2), flush=True)
     with zipfile.ZipFile(os.path.join(run, 'artifacts.zip'), 'w', zipfile.ZIP_DEFLATED) as archive:
         for root, dirs, files in os.walk(package):
             for name in files:
                 full = os.path.join(root, name)
                 archive.write(full, os.path.relpath(full, run))
-        for name in ['native-tests.log', 'packaged-tests.log', 'packaged-tests.json']:
+        for name in ['native-tests.log', 'packaged-tests.log', 'packaged-tests.json', 'installer-tests.log']:
             archive.write(os.path.join(run, name), name)
         for name in ['configure.log', 'build.log']:
             archive.write(os.path.join(build, name), name)

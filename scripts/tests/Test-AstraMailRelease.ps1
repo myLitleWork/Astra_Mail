@@ -29,6 +29,45 @@ $archive = [IO.Compression.ZipFile]::OpenRead($zip)
 try { Assert-Release ($archive.Entries[0].FullName -ceq $unicodeName) 'source ZIP preserves Unicode file names' }
 finally { $archive.Dispose() }
 $state=Get-AstraMailInputs $fixture
+$htmlName='tutorials/guide.html'
+$docName='tutorials/manual.doc'
+$cssName='tutorials/style.css'
+[IO.File]::WriteAllText((Join-Path $fixture $cssName),'body { color: black; }')
+[IO.File]::WriteAllText((Join-Path $fixture 'src/not-a-release-style.css'),'synthetic excluded css')
+$installerName='scripts/install_astramail.sh'
+[IO.File]::WriteAllText((Join-Path $fixture $htmlName),'<html>synthetic guide</html>')
+$binaryDoc=[byte[]]@(0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1,0,255,128)
+[IO.File]::WriteAllBytes((Join-Path $fixture $docName),$binaryDoc)
+[IO.File]::WriteAllText((Join-Path $fixture $installerName),'# synthetic installer; never executed')
+[IO.File]::WriteAllBytes((Join-Path $fixture 'src/not-a-release-document.doc'),$binaryDoc)
+$withDocuments=Get-AstraMailInputs $fixture
+foreach($name in @($htmlName,$docName,$cssName,$installerName)) {
+    Assert-Release ($name -in @($withDocuments.Files.Path)) "release input includes $name"
+}
+Assert-Release ('src/not-a-release-style.css' -notin @($withDocuments.Files.Path)) 'CSS allowlist is limited to tutorials'
+Assert-Release ('src/not-a-release-document.doc' -notin @($withDocuments.Files.Path)) 'DOC allowlist is limited to tutorials'
+Assert-Release ($withDocuments.InputSha256 -ne $state.InputSha256) 'added operator documents change release fingerprint'
+$documentZip=Join-Path $testRoot 'documents.zip'
+New-AstraMailSourceZip $documentZip $fixture @($htmlName,$docName,$installerName)
+$archive=[IO.Compression.ZipFile]::OpenRead($documentZip)
+try {
+    $entry=$archive.GetEntry($docName)
+    $buffer=New-Object IO.MemoryStream
+    $stream=$entry.Open()
+    try { $stream.CopyTo($buffer); $copy=$buffer.ToArray() }
+    finally { $stream.Dispose(); $buffer.Dispose() }
+    Assert-Release ([Convert]::ToBase64String($copy) -ceq [Convert]::ToBase64String($binaryDoc)) 'binary DOC survives source ZIP byte-for-byte'
+} finally { $archive.Dispose() }
+$beforeEdit=$withDocuments.InputSha256
+[IO.File]::WriteAllText((Join-Path $fixture $htmlName),'<html>updated synthetic guide</html>')
+Assert-Release ((Get-AstraMailInputs $fixture).InputSha256 -ne $beforeEdit) 'HTML edit changes release fingerprint'
+$beforeEdit=(Get-AstraMailInputs $fixture).InputSha256
+[IO.File]::AppendAllText((Join-Path $fixture $docName),'synthetic update')
+Assert-Release ((Get-AstraMailInputs $fixture).InputSha256 -ne $beforeEdit) 'DOC edit changes release fingerprint'
+$beforeEdit=(Get-AstraMailInputs $fixture).InputSha256
+[IO.File]::AppendAllText((Join-Path $fixture $cssName),'p { color: blue; }')
+Assert-Release ((Get-AstraMailInputs $fixture).InputSha256 -ne $beforeEdit) 'CSS edit changes release fingerprint'
+$state=Get-AstraMailInputs $fixture
 $first=& (Join-Path $scripts 'Sync-AstraMailVersion.ps1') -ProjectRoot $fixture -InputState $state
 Assert-Release ($first.Version -eq '3.3.0') 'first sync preserves bootstrap version'
 $again=& (Join-Path $scripts 'Sync-AstraMailVersion.ps1') -ProjectRoot $fixture

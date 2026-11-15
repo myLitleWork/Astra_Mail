@@ -8,7 +8,15 @@ mount --make-rprivate /
 mount --bind "$workspace" "$view"
 mount -t tmpfs -o mode=1777 tmpfs /tmp
 ip link set lo up
-if [ "$2" = package ]; then
+if [ "$2" = installer ]; then
+    mount --bind "$view/package" "$view/package"
+    mount -o remount,bind,ro,noexec "$view/package"
+    sudo -u "$SUDO_USER" env HOME="$view/home-test" ASTRAMAIL_TEST_NOEXEC=1 \
+        python3 "$view/source/tests/test_installer.py" "$view/package"
+elif [ "$2" = installed ]; then
+    sudo -u "$SUDO_USER" env HOME="$view/home-test" PYTHONPATH="$view/source/tests" \
+        python3 "$view/source/scripts/Test-AstraMailPackaged.py" "$view/build" "$view/package" "$view/installed-tests.json" --installed
+elif [ "$2" = package ]; then
     sudo -u "$SUDO_USER" env HOME="$view/home-test" PYTHONPATH="$view/source/tests" \
         python3 "$view/source/scripts/Test-AstraMailPackaged.py" "$view/build" "$view/package" "$view/packaged-tests.json"
 else

@@ -14,10 +14,15 @@ import test_am06_native as terminal
 import test_am11_native as eof
 
 build, package, result = sys.argv[1:4]
+installed_mode = len(sys.argv) > 4 and sys.argv[4] == '--installed'
 with tempfile.TemporaryDirectory(prefix='release-ui-', dir=build) as root:
     runtime, home = os.path.join(root, 'runtime'), os.path.join(root, 'home')
     shutil.copytree(package, runtime)
     os.mkdir(home)
+    if installed_mode:
+        env = terminal.environment(home, {'XDG_CONFIG_HOME': os.path.join(home, '.config')})
+        subprocess.check_call(['bash', os.path.join(runtime, 'scripts/install_astramail.sh')], env=env)
+        runtime = os.path.join(home, '.local/bin')
     smtp, imap = old.SMTPServer(), network.IMAP()
     subprocess.check_call([os.path.join(build, 'am01_driver'), 'seed', str(smtp.port), str(imap.port)],
                           env=terminal.environment(home), stdout=subprocess.DEVNULL)
@@ -25,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix='release-ui-', dir=build) as root:
     tty = terminal.Terminal('', home, app=True)
     try:
         eof.unlock(tty)
-        tty.send('3\n')
+        tty.send('2\n2\n')
         tty.read_until('Импорт контактов из CSV (выбор папки/файла)')
         tty.read_until('Выбор: ')
         choices = re.findall(r'(\d+)\. Импорт контактов из CSV', tty.data.decode('utf-8', 'replace'))
@@ -49,6 +54,6 @@ with tempfile.TemporaryDirectory(prefix='release-ui-', dir=build) as root:
             assert value in contacts, 'CSV record not persisted: '+value
         with open(result, 'w', encoding='utf-8') as file:
             json.dump({'packagedUiCsvImport': True, 'contacts': 3, 'cleanExit': True}, file)
-        print('PACKAGED_UI_CSV_CONTACTS=3 CLEAN_EXIT=1', flush=True)
+        print(('INSTALLED' if installed_mode else 'PACKAGED') + '_UI_CSV_CONTACTS=3 CLEAN_EXIT=1', flush=True)
     finally:
         tty.close()

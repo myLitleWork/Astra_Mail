@@ -32,7 +32,7 @@ function Expand-AstraMailArtifacts([string]$Path, [string]$Destination) {
         foreach ($entry in $archive.Entries) {
             $rel = $entry.FullName
             if ($rel.StartsWith('/') -or $rel.Contains('\') -or $rel.Contains(':') -or $rel -match '(^|/)\.{1,2}(/|$)' -or
-                ($rel -notlike 'package/*' -and $rel -notin @('native-tests.log','packaged-tests.log','packaged-tests.json','configure.log','build.log'))) {
+                ($rel -notlike 'package/*' -and $rel -notin @('native-tests.log','packaged-tests.log','packaged-tests.json','installer-tests.log','configure.log','build.log'))) {
                 throw "Unsafe artifact archive path: $rel"
             }
         }
@@ -57,7 +57,8 @@ function Get-AstraMailInputs([string]$ProjectRoot) {
             foreach ($file in Get-ChildItem -LiteralPath $dir -Force) {
                 if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Reparse point in release inputs: $($file.FullName)" }
                 if ($file.PSIsContainer) { $pending.Push($file.FullName); continue }
-                if ($file.Name -eq 'CMakeLists.txt' -or $file.Extension -match '^\.(cpp|c|h|in|cmake|ps1|py|sh|bat|csv|md)$') {
+                $tutorialDocument = $root -eq 'tutorials' -and $file.Extension -match '^\.(html?|doc|css)$'
+                if ($file.Name -eq 'CMakeLists.txt' -or $file.Extension -match '^\.(cpp|c|h|in|cmake|ps1|py|sh|bat|csv|md)$' -or $tutorialDocument) {
                     $paths.Add($file.FullName.Substring($base.Length+1).Replace('\','/'))
                 }
             }

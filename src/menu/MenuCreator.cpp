@@ -123,15 +123,20 @@ namespace astra_mail::menu
             }
         }
 
-        menu->add(std::make_unique<CmdExportUnreadToFolders>(
-                imap.host,
-                imap.port,
-                imap.user,
-                password,
-                imapFolders,
-                mountPoint,
-                ExportStrategy{ mode, dedupByHash }
-        ));
+        // With one folder the per-folder command already exports everything.
+        // Keep the empty-list command available for the offline fallback.
+        if (imapFolders.size() != 1)
+        {
+            menu->add(std::make_unique<CmdExportUnreadToFolders>(
+                    imap.host,
+                    imap.port,
+                    imap.user,
+                    password,
+                    imapFolders,
+                    mountPoint,
+                    ExportStrategy{ mode, dedupByHash }
+            ));
+        }
 
         for (const auto& folder : imapFolders)
         {
@@ -226,6 +231,14 @@ namespace astra_mail::menu
                 )
         );
 
+
+        menu->add(std::make_unique<CmdOpenMenu>(
+                []() { return createTutorialsMenu(); },
+                "Справка и туториалы"));
+
+        menu->add(std::make_unique<CmdOpenMenu>(
+                []() { return createResetSettingsMenu(); },
+                "Сброс настроек"));
 
         return menu;
     }
@@ -430,13 +443,50 @@ namespace astra_mail::menu
     // ==================== МЕНЮ «СИСТЕМА» ====================
     std::unique_ptr<Menu> createSystemMenu()
     {
-
         auto menu = std::make_unique<Menu>("Система");
+
+        menu->add(std::make_unique<CmdOpenMenu>(
+                []() { return createUsbMenu(); },
+                "Флеш-накопители"));
+
+        menu->add(std::make_unique<CmdCheckServers>());
+
+        menu->add(std::make_unique<CmdBack>());
+        return menu;
+    }
+
+    std::unique_ptr<Menu> createUsbMenu()
+    {
+        auto menu = std::make_unique<Menu>("Флеш-накопители");
+
+        menu->add(std::make_unique<CmdOpenMenu>(
+                []() { return createUsbDrivesMenu(); },
+                "Подключить или отключить флешку"));
+
+        menu->add(std::make_unique<CmdEnableUsbMount>());
+
+        menu->add(
+                std::make_unique<CmdCleanupGarbageMounts>()
+        );
+
+        menu->add(std::make_unique<CmdBack>());
+        return menu;
+    }
+
+    std::unique_ptr<Menu> createUsbDrivesMenu()
+    {
+        auto menu = std::make_unique<Menu>("Подключение флеш-накопителей");
 
         FlashDriveScanner scanner;
         scanner.scan();
 
         auto drivers = scanner.getDrives();
+        if (drivers.empty())
+        {
+            menu->add(std::make_unique<CmdInfo>(
+                    "Флеш-накопители не найдены",
+                    config::defaults::noFlashDrivesFound()));
+        }
         for (const auto& d : drivers)
         {
             if (d.mounted)
@@ -445,50 +495,7 @@ namespace astra_mail::menu
                 menu->add(std::make_unique<CmdMountFlash>(d));
         }
 
-        menu->add(
-                std::make_unique<CmdOpenMenu>(
-                        []() { return createThunderbirdProfilesMenu(); },
-                        "Профили Thunderbird"
-                )
-        );
-
-        menu->add(std::make_unique<CmdShowLocalProfileSettings>());
-        menu->add(std::make_unique<CmdUnlockAccount>());
-        menu->add(std::make_unique<CmdShowLocalContacts>());
-
-        menu->add(std::make_unique<CmdEditConfig>(
-                ConfigItem{ "Редактировать настройки профиля", config::localMailSettings() }));
-
-        menu->add(std::make_unique<CmdEditConfig>(
-                ConfigItem{ "Редактировать абонентов", config::localContacts() }));
-
-        menu->add(std::make_unique<CmdResetConfig>(
-                "Пересоздать настройки профиля (по умолчанию)",
-                [](bool force) { config::ensureLocalMailSettings(force); }));
-
-        menu->add(std::make_unique<CmdImportCsvContacts>());
-
-        menu->add(std::make_unique<CmdResetConfig>(
-                "Пересоздать адресную книгу (по умолчанию)",
-                [](bool force) { config::ensureLocalContacts(force); }));
-
-        menu->add(std::make_unique<CmdInfo>(
-                "Справка: настройки профиля",
-                config::defaults::localMailSettingsHelp()));
-
-        menu->add(std::make_unique<CmdInfo>(
-                "Справка: адресная книга",
-                config::defaults::localContactsHelp()));
-
-        menu->add(std::make_unique<CmdCheckServers>());
-        menu->add(std::make_unique<CmdEnableUsbMount>());
-
-        menu->add(
-                std::make_unique<CmdCleanupGarbageMounts>()
-        );
-
         menu->add(std::make_unique<CmdBack>());
-
         return menu;
     }
 
@@ -523,17 +530,73 @@ namespace astra_mail::menu
     {
         auto menu = std::make_unique<Menu>("Настройки");
 
+        menu->add(std::make_unique<CmdOpenMenu>(
+                []() { return createAccountSettingsMenu(); },
+                "Почтовый аккаунт"));
+
+        menu->add(std::make_unique<CmdOpenMenu>(
+                []() { return createContactsSettingsMenu(); },
+                "Адресная книга"));
+
+        menu->add(std::make_unique<CmdOpenMenu>(
+                []() { return createMailRulesSettingsMenu(); },
+                "Правила обработки писем"));
+
+        menu->add(std::make_unique<CmdEditConfig>(
+                ConfigItem{
+                        "Интервалы фонового режима (бездействие)",
+                        config::idleSettings()
+                }));
+
+        menu->add(std::make_unique<CmdBack>());
+        return menu;
+    }
+
+    std::unique_ptr<Menu> createAccountSettingsMenu()
+    {
+        auto menu = std::make_unique<Menu>("Почтовый аккаунт");
+
+        menu->add(
+                std::make_unique<CmdOpenMenu>(
+                        []() { return createThunderbirdProfilesMenu(); },
+                        "Профили Thunderbird"
+                )
+        );
+
+        menu->add(std::make_unique<CmdShowLocalProfileSettings>());
+
+        menu->add(std::make_unique<CmdUnlockAccount>());
+
+        menu->add(std::make_unique<CmdEditConfig>(
+                ConfigItem{ "Редактировать настройки профиля", config::localMailSettings() }));
+
+        menu->add(std::make_unique<CmdBack>());
+        return menu;
+    }
+
+    std::unique_ptr<Menu> createContactsSettingsMenu()
+    {
+        auto menu = std::make_unique<Menu>("Адресная книга");
+
+        menu->add(std::make_unique<CmdShowLocalContacts>());
+
+        menu->add(std::make_unique<CmdEditConfig>(
+                ConfigItem{ "Редактировать абонентов", config::localContacts() }));
+
+        menu->add(std::make_unique<CmdImportCsvContacts>());
+
+        menu->add(std::make_unique<CmdBack>());
+        return menu;
+    }
+
+    std::unique_ptr<Menu> createMailRulesSettingsMenu()
+    {
+        auto menu = std::make_unique<Menu>("Правила обработки писем");
+
         menu->add(std::make_unique<CmdEditConfig>(
                 ConfigItem{
                         "Редактировать правила темы письма",
                         config::subjectRules()
-                }));
-
-        menu->add(std::make_unique<CmdResetConfig>(
-                "Пересоздать правила темы письма",
-                [](bool force)
-                {
-                    config::ensureSubjectRules(force);
                 }));
 
         menu->add(std::make_unique<CmdEditConfig>(
@@ -542,23 +605,40 @@ namespace astra_mail::menu
                         config::attachmentGroups()
                 }));
 
-        menu->add(std::make_unique<CmdResetConfig>(
-                "Пересоздать группы вложений",
-                [](bool force)
-                {
-                    config::ensureAttachmentGroups(force);
-                }));
-
         menu->add(std::make_unique<CmdEditConfig>(
                 ConfigItem{
                         "Редактировать правила темы исходящего",
                         config::outgoingSubjectRules()
                 }));
 
-        menu->add(std::make_unique<CmdEditConfig>(
-                ConfigItem{
-                        "Интервалы фонового режима (бездействие)",
-                        config::idleSettings()
+        menu->add(std::make_unique<CmdBack>());
+        return menu;
+    }
+
+    std::unique_ptr<Menu> createResetSettingsMenu()
+    {
+        auto menu = std::make_unique<Menu>("Сброс настроек");
+
+        menu->add(std::make_unique<CmdResetConfig>(
+                "Пересоздать настройки профиля (по умолчанию)",
+                [](bool force) { config::ensureLocalMailSettings(force); }));
+
+        menu->add(std::make_unique<CmdResetConfig>(
+                "Пересоздать адресную книгу (по умолчанию)",
+                [](bool force) { config::ensureLocalContacts(force); }));
+
+        menu->add(std::make_unique<CmdResetConfig>(
+                "Пересоздать правила темы письма",
+                [](bool force)
+                {
+                    config::ensureSubjectRules(force);
+                }));
+
+        menu->add(std::make_unique<CmdResetConfig>(
+                "Пересоздать группы вложений",
+                [](bool force)
+                {
+                    config::ensureAttachmentGroups(force);
                 }));
 
         menu->add(std::make_unique<CmdResetConfig>(
@@ -574,6 +654,22 @@ namespace astra_mail::menu
                 {
                     config::ensureIdleSettings(force);
                 }));
+
+        menu->add(std::make_unique<CmdBack>());
+        return menu;
+    }
+
+    std::unique_ptr<Menu> createTutorialsMenu()
+    {
+        auto menu = std::make_unique<Menu>("Справка и туториалы");
+
+        menu->add(std::make_unique<CmdInfo>(
+                "Справка: настройки профиля",
+                config::defaults::localMailSettingsHelp()));
+
+        menu->add(std::make_unique<CmdInfo>(
+                "Справка: адресная книга",
+                config::defaults::localContactsHelp()));
 
         menu->add(std::make_unique<CmdInfo>(
                 "Справка: правила темы письма",
@@ -596,7 +692,6 @@ namespace astra_mail::menu
         ));
 
         menu->add(std::make_unique<CmdBack>());
-
         return menu;
     }
 

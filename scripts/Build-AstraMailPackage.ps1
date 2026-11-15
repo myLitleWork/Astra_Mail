@@ -25,7 +25,7 @@ if (!$SkipCloudPublish) {
     if ($CloudRoot -and !(Test-Path -LiteralPath $CloudRoot -PathType Container)) { throw 'Configured cloud root is unavailable' }
 }
 Invoke-AstraMailNative -File ssh -Arguments @('-o','BatchMode=yes',$SshHost,
-    'test "$(uname -m)" = x86_64 && command -v cmake && command -v g++ && command -v python3 && command -v readelf && command -v tar && command -v sha256sum && test -f /usr/share/doc/libsodium18/copyright && test -f /usr/share/doc/libstdc++6/copyright && sudo -n unshare -m -n true')
+    'test "$(uname -m)" = x86_64 && command -v cmake && command -v g++ && command -v python3 && python3 -c ''from gi.repository import Gio'' && command -v bash && command -v readelf && command -v tar && command -v sha256sum && test -f /usr/share/doc/libsodium18/copyright && test -f /usr/share/doc/libstdc++6/copyright && sudo -n unshare -m -n true')
 $charset = Invoke-AstraMailNative -File ssh -Arguments @('-o','BatchMode=yes',$SshHost,'LC_ALL=C.UTF-8 locale charmap') -Capture
 if ($charset -ne 'UTF-8') { throw 'Builder must support C.UTF-8 for Unicode package paths' }
 $lockScript = Resolve-AstraMailReleaseHelper $project 'Enter-WorkspaceReleaseLock.ps1'

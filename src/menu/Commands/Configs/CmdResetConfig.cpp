@@ -2,6 +2,7 @@
 #include "CmdResetConfig.h"
 #include "Utils/Confirm.h"
 #include <iostream>
+#include <exception>
 
 namespace astra_mail
 {
@@ -28,11 +29,20 @@ namespace astra_mail
         if (!confirm(warning))
         {
             std::cout << "Отменено.\n";
+            if (std::cin.good()) my::pause();
             return CommandResult::Continue;
         }
 
-        action_(true); // force
-        std::cout << "[OK] Конфигурация пересоздана\n";
+        try
+        {
+            action_(true); // force
+            std::cout << "[OK] Конфигурация пересоздана\n";
+        }
+        catch (const std::exception& error)
+        {
+            std::cerr << "[Ошибка] Не удалось пересоздать конфигурацию: " << error.what() << "\n";
+        }
+        if (std::cin.good()) my::pause();
 
         return CommandResult::Continue;
     }
