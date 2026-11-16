@@ -1,9 +1,9 @@
 {
     "formatVersion":  1,
     "major":  3,
-    "minor":  3,
-    "patch":  5,
+    "minor":  4,
+    "patch":  0,
     "productName":  "AstraMail",
     "releaseFingerprintFormat":  1,
-    "releaseInputSha256":  "416104116294d5d10e5216c370e3ec50199776c95d51339fc63935f09b3e39c2"
+    "releaseInputSha256":  "3781da4b1300a899042da3a7cccca8cc554ab60c87a287c54d5eb0589d36cad2"
 }
