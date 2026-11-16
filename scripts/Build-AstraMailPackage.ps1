@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param([ValidatePattern('^[A-Za-z0-9][A-Za-z0-9_.@-]*$')][string]$SshHost = 'astra16',
       [string]$CloudRoot, [switch]$SkipCloudPublish, [switch]$SkipVersionBump,
-      [switch]$SkipTests)
+      [switch]$SkipTests, [switch]$PreserveVersionFile)
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'AstraMailRelease.ps1')
@@ -33,13 +33,13 @@ $lockScript = Resolve-AstraMailReleaseHelper $project 'Enter-WorkspaceReleaseLoc
 $lock = & $lockScript -ProjectRoot $project
 try {
     $inputs = Get-AstraMailInputs $project
-    $version = & (Join-Path $PSScriptRoot 'Sync-AstraMailVersion.ps1') -ProjectRoot $project -InputState $inputs -SkipVersionBump:$SkipVersionBump
+    $version = & (Join-Path $PSScriptRoot 'Sync-AstraMailVersion.ps1') -ProjectRoot $project -InputState $inputs -SkipVersionBump:$SkipVersionBump -PreserveVersionFile:$PreserveVersionFile
     $id = (Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
     $local = Join-Path $project ('out/release-runs/'+$id)
     $null = New-Item -ItemType Directory -Path $local
     $head = Invoke-AstraMailNative -File git -Arguments @('-C',$project,'-c',"safe.directory=$($project.Replace('\','/'))",'rev-parse','HEAD') -Capture
     $status = Invoke-AstraMailNative -File git -Arguments @('-C',$project,'-c',"safe.directory=$($project.Replace('\','/'))",'status','--porcelain') -Capture
-    $request = [pscustomobject]@{ Version = $version.Version; Head = $head; Dirty = [bool]$status; InputSha256 = $inputs.InputSha256; SkipTests = [bool]$SkipTests }
+    $request = [pscustomobject]@{ Version = $version.Version; Head = $head; Dirty = [bool]$status; InputSha256 = $inputs.InputSha256; SkipTests = [bool]$SkipTests; PreserveVersionFile = [bool]$PreserveVersionFile }
     if ($SkipTests) { Write-Warning 'Tests skipped by explicit request; the package manifest will record this.' }
     Write-AstraMailJson (Join-Path $local 'input-state.json') $inputs
     Write-AstraMailJson (Join-Path $local 'build-request.json') $request

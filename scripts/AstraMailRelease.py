@@ -41,7 +41,10 @@ inputs = read_json(os.path.join(run, 'input-state.json'))
 version = read_json(os.path.join(source, 'app-version.json'))
 actual_version = '{}.{}.{}'.format(version['major'], version['minor'], version['patch'])
 require(actual_version == request['Version'], 'canonical version mismatch')
-require(inputs['InputSha256'] == request['InputSha256'] == version['releaseInputSha256'], 'input identity mismatch')
+require(inputs['InputSha256'] == request['InputSha256'], 'input identity mismatch')
+preserve_version = request.get('PreserveVersionFile', False)
+require(isinstance(preserve_version, bool), 'PreserveVersionFile must be boolean')
+require(preserve_version or inputs['InputSha256'] == version['releaseInputSha256'], 'version fingerprint mismatch')
 
 if mode == 'verify':
     lines = []
@@ -119,7 +122,8 @@ elif mode == 'finalize':
     manifest = {'formatVersion': 1, 'product': 'AstraMail', 'version': actual_version,
                 'configuration': 'Release', 'architecture': 'x86_64', 'platform': 'Astra Linux 1.6',
                 'createdUtc': datetime.datetime.utcnow().isoformat()+'Z', 'containsLocalSettings': False,
-                'source': {'head': request['Head'], 'dirty': request['Dirty'], 'inputSha256': inputs['InputSha256'], 'inputCount': len(inputs['Files'])},
+                'source': {'head': request['Head'], 'dirty': request['Dirty'], 'inputSha256': inputs['InputSha256'], 'inputCount': len(inputs['Files']),
+                           'versionFilePreserved': preserve_version, 'versionFileInputSha256': version['releaseInputSha256']},
                 'validation': {'nativeChecks': 0 if skip_tests else 474,
                                'csvSampleContacts': 0 if skip_tests else 3,
                                'packagedUiCsvImport': not skip_tests,

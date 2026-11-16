@@ -77,6 +77,10 @@ $null=New-Item -ItemType Directory -Path (Join-Path $fixture '.astramail')
 $withoutRuntime=Get-AstraMailInputs $fixture
 Assert-Release ($withoutRuntime.InputSha256 -eq $state.InputSha256) 'runtime directory does not enter fingerprint'
 [IO.File]::WriteAllText((Join-Path $fixture 'deployment/sample.csv'),'changed synthetic CSV')
+$preservedHash=Get-AstraMailSha256 (Join-Path $fixture 'app-version.json')
+$preserved=& (Join-Path $scripts 'Sync-AstraMailVersion.ps1') -ProjectRoot $fixture -PreserveVersionFile
+Assert-Release ($preserved.Version -eq $again.Version) 'verification preserves current version despite changed inputs'
+Assert-Release ((Get-AstraMailSha256 (Join-Path $fixture 'app-version.json')) -ceq $preservedHash) 'verification preserves version file byte-for-byte'
 $changed=& (Join-Path $scripts 'Sync-AstraMailVersion.ps1') -ProjectRoot $fixture
 Assert-Release ($changed.Version -eq '3.3.1') 'CSV/template change bumps before compilation'
 $same=& (Join-Path $scripts 'Sync-AstraMailVersion.ps1') -ProjectRoot $fixture
