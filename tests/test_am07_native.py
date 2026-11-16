@@ -216,7 +216,9 @@ class SMTP(object):
                     conn.sendall(b'334 password\r\n')
                     password = base64.b64decode(stream.readline().strip(), validate=True)
                     self.attempts.append((user, password))
-                    conn.sendall(b'235 accepted\r\n' if (user, password) == (self.user, self.password) else b'535 denied\r\n')
+                    # A server may echo both plaintext and encoded credentials.
+                    conn.sendall(b'235 accepted\r\n' if (user, password) == (self.user, self.password)
+                                 else b'535 denied '+user+b' '+password+b' '+base64.b64encode(password)+b'\r\n')
                 elif line == b'QUIT':
                     conn.sendall(b'221 bye\r\n')
                     break
@@ -287,7 +289,9 @@ def main():
         check('OK=0' in out and 'NO' in out and wrong.decode() not in out,
               'wrong IMAP password is rejected and echoed credential is absent from error output')
         out = call('smtp', home, imap, smtp, default_user, wrong)
-        check('OK=0' in out and '535' in out and wrong.decode() not in out, 'wrong SMTP password is rejected')
+        check('OK=0' in out and '535' in out and wrong.decode() not in out and
+              default_user.decode() not in out and base64.b64encode(wrong).decode() not in out,
+              'wrong SMTP password is rejected without logging echoed plaintext or encoded credentials')
 
         password = '  тест "пароль" \\ конец  '.encode('utf-8')
         folder = b'Folder "quoted" \\ child'
@@ -354,7 +358,7 @@ def main():
                 tty.send('synthetic-am07-pin\n')
                 tty.read_until('Нажмите Enter')
                 tty.send('\n')
-                tty.read_until('Основное меню Astra_Mail_v3.3')
+                tty.read_until(terminal_tests.MENU_PROMPT)
                 tty.send('0\n')
                 out = tty.finish()
                 check(tty.proc.returncode==0 and len(imap.logins)==2 and smtp.attempts==[(default_user,password)] and

@@ -72,7 +72,8 @@ bool SmtpClient::openSession(Session& ses, std::string& error) {
         if ((!command.empty() && !sendLine(ses.sock, command)) ||
             !recvResponse(ses, code, reply) || code != expected) {
             error = std::string(stage) + ": " + (!astra_mail::net::lastError().empty() ? astra_mail::net::lastError() :
-                (reply.empty() ? "connection/protocol error" : reply));
+                // Server replies can echo credentials, including their base64 form.
+                (reply.empty() ? "connection/protocol error" : "SMTP reply " + std::to_string(code)));
             abortSession(ses); return false;
         }
         return true;

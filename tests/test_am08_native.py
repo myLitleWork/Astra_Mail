@@ -185,7 +185,7 @@ def main():
                 tty.send('synthetic-pin-123456\n')
                 tty.read_until('Нажмите Enter')
                 tty.send('\n')
-                tty.read_until('Основное меню Astra_Mail_v3.3')
+                tty.read_until(terminal.MENU_PROMPT)
                 check(smtp.data_seen.wait(8),'complete application starts real background send before conflicting UI command')
                 tty.send('1\n')
                 tty.read_until('Локальные исходящие')

@@ -99,7 +99,7 @@ def unlock(tty):
     tty.send('synthetic-pin-123456\n')
     tty.read_until('Нажмите Enter')
     tty.send('\n')
-    tty.read_until('Основное меню Astra_Mail_v3.3')
+    tty.read_until(terminal.MENU_PROMPT)
 
 
 class HeldSMTP(old.SMTPServer):
@@ -236,7 +236,7 @@ def main():
             try:
                 proc.stdin.write(b'1\nsynthetic-pin-123456\n\n')
                 proc.stdin.flush()
-                data = pipe_prompt(proc, 'Основное меню Astra_Mail_v3.3')
+                data = pipe_prompt(proc, terminal.MENU_PROMPT)
                 started = time.monotonic()
                 proc.stdin.close()
                 proc.stdin = None
@@ -249,7 +249,7 @@ def main():
                     proc.kill()
                     proc.wait()
 
-            for name, navigate, prompt in [('main', '', 'Основное меню Astra_Mail_v3.3'),
+            for name, navigate, prompt in [('main', '', terminal.MENU_PROMPT),
                                            ('nested-outbox', '1\n4\n', 'Очистить исходящие')]:
                 home = fixture(name)
                 seed(home, smtp, imap)

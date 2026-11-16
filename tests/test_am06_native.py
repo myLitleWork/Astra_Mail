@@ -3,6 +3,7 @@
 from __future__ import print_function
 import fcntl
 import glob
+import json
 import os
 import pty
 import resource
@@ -15,6 +16,10 @@ import termios
 import time
 
 SOURCE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+with open(os.path.join(SOURCE, 'app-version.json')) as version_file:
+    app_version = json.load(version_file)
+MENU_PROMPT = 'Основное меню Astra_Mail_v{}.{}.{}'.format(
+    app_version['major'], app_version['minor'], app_version['patch'])
 BUILD = os.path.abspath(sys.argv[1])
 DRIVER = os.path.join(BUILD, 'am06_driver')
 OLD_PIN = '  synthetic legacy pin with spaces  '
@@ -304,7 +309,7 @@ def main():
             tty.send('\n')
             tty.read_until('[Старт] Нет соединения')
             tty.send('\n')
-            tty.read_until('Основное меню Astra_Mail_v3.3')
+            tty.read_until(MENU_PROMPT)
             tty.send('0\n')
             out = tty.finish()
             check(tty.proc.returncode == 0 and 'PIN принят' in out and OLD_PIN not in out and tty.restored(),

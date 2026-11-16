@@ -114,12 +114,14 @@ class BootstrapTests(unittest.TestCase):
         self.assertTrue(all(os.stat(path).st_mtime == 1000000000 for path in self.paths))
 
     def test_restore_each_missing_file_without_changing_others(self):
-        for i, path in enumerate(self.paths):
-            with self.subTest(file=NAMES[i]):
+        missing_sets = [(i,) for i in range(len(NAMES))] + [(0, 1), (0, 2), (1, 2)]
+        for missing in missing_sets:
+            with self.subTest(files=[NAMES[i] for i in missing]):
                 expected = self.seed()
-                os.unlink(path)
+                for i in missing:
+                    os.unlink(self.paths[i])
+                    expected[i] = self.defaults[i]
                 self.assert_startup_ok()
-                expected[i] = self.defaults[i]
                 self.assertEqual([self.read(p) for p in self.paths], expected)
 
     def test_empty_files_receive_defaults(self):
