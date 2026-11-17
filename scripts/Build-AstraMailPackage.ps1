@@ -77,6 +77,13 @@ try {
         Invoke-AstraMailNative -File ssh -Arguments @('-o','BatchMode=yes',$SshHost,$command)
         $package | Add-Member NoteProperty ArchiveVerifiedOnTarget $true
     }
+    # Workspace-wide layout out\package\<A.B.C>\<Product>-<A.B.C>\; release-runs stays the run log.
+    $releaseDirectory = Join-Path $project ('out\package\'+$version.Version)
+    $localPackage = Join-Path $releaseDirectory ('AstraMail-'+$version.Version)
+    if (Test-Path -LiteralPath $localPackage) { Remove-Item -LiteralPath $localPackage -Recurse -Force }
+    $null = New-Item -ItemType Directory -Force -Path $releaseDirectory
+    Copy-Item -LiteralPath $package.PackageDirectory -Destination $localPackage -Recurse
+    $package | Add-Member NoteProperty LocalPackageDirectory $localPackage
     Write-AstraMailJson (Join-Path $local 'release-result.json') $package
     Write-Host "Release completed: $($package.PackageDirectory)"
     Write-Host "Result: $(Join-Path $local 'release-result.json')"
